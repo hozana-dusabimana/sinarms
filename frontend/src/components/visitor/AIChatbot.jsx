@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Bot } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, Mic, MicOff } from 'lucide-react';
 
 export default function AIChatbot() {
   const [isOpen, setIsOpen] = useState(false);
@@ -9,6 +9,7 @@ export default function AIChatbot() {
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -33,13 +34,26 @@ export default function AIChatbot() {
     }, 1500);
   };
 
+  const toggleListen = () => {
+    if (isListening) {
+      setIsListening(false);
+    } else {
+      setIsListening(true);
+      // Simulate speech to text picking up something after a brief delay
+      setTimeout(() => {
+        setInput("Where is the reception desk?");
+        setIsListening(false);
+      }, 3000);
+    }
+  };
+
   return (
     <>
       <motion.button
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-full shadow-2xl flex items-center justify-center z-40 border border-slate-700 dark:border-slate-300"
+        className="fixed bottom-24 right-6 w-14 h-14 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-full shadow-2xl flex items-center justify-center z-[100] border border-slate-700 dark:border-slate-300"
       >
         <MessageSquare size={24} />
       </motion.button>
@@ -99,18 +113,26 @@ export default function AIChatbot() {
             </div>
 
             <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 absolute bottom-0 w-full z-10">
-              <div className="relative flex items-center">
-                <input
-                  type="text"
-                  placeholder="Ask a question..."
-                  className="w-full bg-slate-100 dark:bg-[#0b101e] border-none text-slate-800 dark:text-slate-200 rounded-full pl-5 pr-12 py-3.5 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 shadow-inner"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                />
+              <div className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder={isListening ? "Listening..." : "Ask a question..."}
+                    className="w-full bg-slate-100 dark:bg-[#0b101e] border-none text-slate-800 dark:text-slate-200 rounded-full pl-5 pr-12 py-3.5 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 shadow-inner"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                  />
+                  <button 
+                    onClick={toggleListen}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition-colors ${isListening ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400 animate-pulse' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                  >
+                    {isListening ? <Mic size={18} /> : <MicOff size={18} />}
+                  </button>
+                </div>
                 <button 
                   onClick={handleSend}
-                  className="absolute right-2 w-10 h-10 bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white rounded-full flex items-center justify-center transition-colors shadow-md shadow-red-500/30"
+                  className="w-12 h-12 shrink-0 bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white rounded-full flex items-center justify-center transition-colors shadow-md shadow-red-500/30"
                 >
                   <Send size={18} className="translate-x-[1px]" />
                 </button>
