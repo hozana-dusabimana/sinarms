@@ -1,17 +1,10 @@
-import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { TerminalSquare, Filter, Download, ArrowRight } from 'lucide-react';
-
-const MOCK_AUDIT = [
-  { id: 101, time: '14:32:01', admin: 'Alice Mutoni', action: 'CREATE_USER', details: 'Added new Receptionist (Jean Paul)', ip: '192.168.1.5' },
-  { id: 102, time: '14:15:22', admin: 'System', action: 'CRON_ALERT', details: 'Generated HIGH alert for Guest 842', ip: 'localhost' },
-  { id: 103, time: '13:50:11', admin: 'Jean Paul', action: 'MANUAL_CHECKOUT', details: 'Force ended session for Visitor 901', ip: '192.168.1.12' },
-  { id: 104, time: '11:20:05', admin: 'Alice Mutoni', action: 'UPDATE_MAP', location: 'Head Office', details: 'Added 2 restricted nodes', ip: '10.0.0.45' },
-  { id: 105, time: '09:00:10', admin: 'Alice Mutoni', action: 'LOGIN', details: 'Successful desktop login', ip: '10.0.0.45' },
-];
+import { useSinarms } from '../../context/SinarmsContext';
 
 export default function AuditLog() {
-  const [logs] = useState(MOCK_AUDIT);
+  const { state, exportAudit } = useSinarms();
+  const logs = state.auditLog || [];
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -37,7 +30,7 @@ export default function AuditLog() {
             <Filter size={18} />
             <span className="hidden sm:inline">Filter</span>
           </button>
-          <button className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 px-4 sm:px-6 py-2 rounded-xl shadow-md transition-all font-bold tracking-wide flex items-center gap-2">
+          <button onClick={() => exportAudit()} className="bg-slate-900 hover:bg-slate-800 dark:bg-slate-100 dark:hover:bg-slate-200 text-white dark:text-slate-900 px-4 sm:px-6 py-2 rounded-xl shadow-md transition-all font-bold tracking-wide flex items-center gap-2">
             <Download size={18} />
             <span className="hidden sm:inline">Export CSV</span>
           </button>
@@ -58,6 +51,7 @@ export default function AuditLog() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
               {logs.map((log, i) => (
+                // `log.timestamp` is stored as ISO in the backend state.
                 <motion.tr 
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -65,20 +59,19 @@ export default function AuditLog() {
                   key={log.id} 
                   className="hover:bg-slate-100 dark:hover:bg-slate-800/40 transition-colors group"
                 >
-                  <td className="px-6 py-4 text-slate-500 font-bold">{log.time}</td>
+                  <td className="px-6 py-4 text-slate-500 font-bold">{log.timestamp ? new Date(log.timestamp).toISOString().slice(11, 19) : '-'}</td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] tracking-widest ${log.admin === 'System' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
-                      {log.admin}
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] tracking-widest ${log.actorName === 'System' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+                      {log.actorName}
                     </span>
                   </td>
                   <td className="px-6 py-4">
                     <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                       {log.action}
-                       {log.location && <span className="text-[10px] text-slate-400 font-normal">@{log.location}</span>}
+                       {log.actionType}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-slate-600 dark:text-slate-400 truncate max-w-sm whitespace-pre-wrap">{log.details}</td>
-                  <td className="px-6 py-4 text-right text-slate-400">{log.ip}</td>
+                  <td className="px-6 py-4 text-right text-slate-400">{log.ipAddress}</td>
                 </motion.tr>
               ))}
             </tbody>

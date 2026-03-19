@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Plus, Edit2, Trash2, Search, X, Languages } from 'lucide-react';
+import { useSinarms } from '../../context/SinarmsContext';
 
 const MOCK_FAQS = [
   { id: 1, q: 'Where is the nearest bathroom?', a: 'The nearest bathroom is at the end of Corridor A, beside the fire exit sign.', lang: 'EN', hits: 142 },
@@ -9,7 +10,8 @@ const MOCK_FAQS = [
 ];
 
 export default function FaqManagement() {
-  const [faqs, setFaqs] = useState(MOCK_FAQS);
+  const { state, createFaq, updateFaq, deleteFaq } = useSinarms();
+  const faqs = state.faq || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState(null);
 
@@ -63,18 +65,18 @@ export default function FaqManagement() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-3 mb-2">
                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                      <Languages size={12}/> {faq.lang}
+                      <Languages size={12}/> {(faq.language || 'en').toUpperCase()}
                     </span>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">{faq.q}</h3>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">{faq.question}</h3>
                   </div>
                   <p className="text-sm font-medium text-slate-500 dark:text-slate-400 line-clamp-2 pl-1 leading-relaxed border-l-2 border-slate-200 dark:border-slate-800">
-                    {faq.a}
+                    {faq.answer}
                   </p>
                 </div>
                 
                 <div className="flex items-center gap-6 self-start sm:self-center">
                   <div className="text-right">
-                    <p className="text-2xl font-black text-slate-700 dark:text-slate-200">{faq.hits}</p>
+                    <p className="text-2xl font-black text-slate-700 dark:text-slate-200">{faq.hitCount}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Matches</p>
                   </div>
                   <div className="flex items-center gap-2 lg:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -85,7 +87,13 @@ export default function FaqManagement() {
                       <Edit2 size={16} />
                     </button>
                     <button 
-                      onClick={() => setFaqs(faqs.filter(f => f.id !== faq.id))}
+                      onClick={async () => {
+                        try {
+                          await deleteFaq(faq.id);
+                        } catch (error) {
+                          window.alert(error?.message || 'Unable to delete FAQ entry.');
+                        }
+                      }}
                       className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
                     >
                       <Trash2 size={16} />
@@ -115,7 +123,7 @@ export default function FaqManagement() {
               <div className="p-6 space-y-5">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Language</label>
-                  <select id="faq-lang" defaultValue={editingFaq ? editingFaq.lang : 'EN'} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] font-bold">
+                  <select id="faq-lang" defaultValue={editingFaq ? (editingFaq.language || 'en').toUpperCase() : 'EN'} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] font-bold">
                     <option value="EN">English</option>
                     <option value="FR">French</option>
                     <option value="RW">Kinyarwanda</option>
@@ -123,25 +131,37 @@ export default function FaqManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Question Variation</label>
-                  <input id="faq-q" type="text" defaultValue={editingFaq ? editingFaq.q : ''} placeholder="e.g. Where can I find the canteen?" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
+                  <input id="faq-q" type="text" defaultValue={editingFaq ? editingFaq.question : ''} placeholder="e.g. Where can I find the canteen?" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Chatbot Answer</label>
-                  <textarea id="faq-a" defaultValue={editingFaq ? editingFaq.a : ''} rows={4} placeholder="Type the precise answer here..." className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] resize-none" />
+                  <textarea id="faq-a" defaultValue={editingFaq ? editingFaq.answer : ''} rows={4} placeholder="Type the precise answer here..." className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg p-3 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] resize-none" />
                 </div>
-                
+                 
                 <div className="pt-2 flex gap-3">
                   <button onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                  <button onClick={() => {
-                    if (editingFaq) {
-                      setFaqs(faqs.map(f => f.id === editingFaq.id ? { 
-                        ...f, 
-                        lang: document.getElementById('faq-lang').value, 
-                        q: document.getElementById('faq-q').value,
-                        a: document.getElementById('faq-a').value
-                      } : f));
+                  <button onClick={async () => {
+                    try {
+                      const languageRaw = document.getElementById('faq-lang').value;
+                      const language = languageRaw === 'FR' ? 'fr' : languageRaw === 'RW' ? 'rw' : 'en';
+                      const question = document.getElementById('faq-q').value;
+                      const answer = document.getElementById('faq-a').value;
+
+                      if (!question.trim() || !answer.trim()) {
+                        window.alert('Question and answer are required.');
+                        return;
+                      }
+
+                      if (editingFaq) {
+                        await updateFaq(editingFaq.id, { language, question, answer });
+                      } else {
+                        await createFaq({ language, question, answer });
+                      }
+
+                      setIsModalOpen(false);
+                    } catch (error) {
+                      window.alert(error?.message || 'Unable to save FAQ entry.');
                     }
-                    setIsModalOpen(false);
                   }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">
                     {editingFaq ? 'Update Entry' : 'Save & Refresh Model'}
                   </button>

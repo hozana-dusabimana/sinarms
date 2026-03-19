@@ -1,17 +1,23 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, LogOut, Map, Settings, Users, Activity, Menu, X, Users2, MessageSquare, TerminalSquare } from 'lucide-react';
 import { useState } from 'react';
+import { useSinarms } from '../context/SinarmsContext';
 
 export default function StaffLayout() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const { currentUser, logout } = useSinarms();
 
-  const handleLogout = () => {
-    localStorage.removeItem('sinarms_role');
-    navigate('/staff/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      localStorage.removeItem('sinarms_role');
+      navigate('/staff/login');
+    }
   };
 
-  const role = localStorage.getItem('sinarms_role') || 'admin';
+  const role = currentUser?.role || localStorage.getItem('sinarms_role') || 'admin';
 
   const allNavItems = [
     { label: 'Live Dashboard', path: '/staff/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin', 'receptionist'] },

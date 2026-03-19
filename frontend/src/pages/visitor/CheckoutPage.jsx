@@ -1,16 +1,35 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LogOut, Star } from 'lucide-react';
+import { useSinarms } from '../../context/SinarmsContext';
+import { formatDurationMinutes, minutesBetween } from '../../lib/sinarmsEngine';
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  const { currentVisitor, checkoutVisitor } = useSinarms();
+  const [rating, setRating] = useState(5);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCheckout = () => {
-    // Process Check-Out API here
-    setTimeout(() => {
+  if (!currentVisitor) {
+    return <Navigate to="/visit" replace />;
+  }
+
+  const duration = currentVisitor.durationMin || minutesBetween(currentVisitor.checkinTime);
+
+  const handleCheckout = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      await checkoutVisitor(currentVisitor.id, {
+        survey: { overall: rating },
+      });
       navigate('/');
-    }, 1000);
+    } catch (err) {
+      window.alert(err?.message || 'Unable to check out right now.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -29,7 +48,7 @@ export default function CheckoutPage() {
         </div>
         
         <h2 className="text-3xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100 mb-2">Check-Out</h2>
-        <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">Thank you for visiting Ruliba Clays Ltd. Your session lasted <span className="text-slate-800 dark:text-slate-200 font-bold">42 minutes</span>.</p>
+        <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">Thank you for visiting Ruliba Clays Ltd. Your session lasted <span className="text-slate-800 dark:text-slate-200 font-bold">{formatDurationMinutes(duration)}</span>.</p>
 
         <hr className="border-slate-200 dark:border-slate-700/50 mb-8" />
 
@@ -41,6 +60,7 @@ export default function CheckoutPage() {
                 key={star}
                 whileHover={{ scale: 1.2 }}
                 whileTap={{ scale: 0.9 }}
+                onClick={() => setRating(star)}
                 className="text-slate-300 dark:text-slate-600 hover:text-yellow-400 focus:text-yellow-400 transition-colors"
               >
                 <Star size={32} fill="currentColor" strokeWidth={1} />

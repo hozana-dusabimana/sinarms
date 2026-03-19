@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, Edit2, Trash2, Shield, Search, X } from 'lucide-react';
-
-const MOCK_USERS = [
-  { id: 1, name: 'Alice Mutoni', email: 'alice@ruliba.rw', role: 'Admin', location: 'All Locations', status: 'Active' },
-  { id: 2, name: 'Jean Paul', email: 'jean@ruliba.rw', role: 'Receptionist', location: 'Head Office', status: 'Active' },
-  { id: 3, name: 'Claire UW', email: 'claire@ruliba.rw', role: 'Receptionist', location: 'Warehouse', status: 'Inactive' },
-];
+import { useSinarms } from '../../context/SinarmsContext';
 
 export default function UserManagement() {
-  const [users, setUsers] = useState(MOCK_USERS);
+  const { state, createUser, deactivateUser } = useSinarms();
+  const users = state.users || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [userName, setUserName] = useState('');
+  const [userEmail, setUserEmail] = useState('');
+  const [userRole, setUserRole] = useState('receptionist');
+  const [userLocationId, setUserLocationId] = useState('');
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -25,7 +25,13 @@ export default function UserManagement() {
           <p className="text-slate-500 dark:text-slate-400 font-medium">Manage Admin and Receptionist accounts</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            setUserName('');
+            setUserEmail('');
+            setUserRole('receptionist');
+            setUserLocationId('');
+            setIsModalOpen(true);
+          }}
           className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2.5 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2"
         >
           <Plus size={18} />
@@ -58,7 +64,15 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-              {users.map(u => (
+              {users.map((u) => {
+                const roleLabel = u.role === 'admin' ? 'Admin' : 'Receptionist';
+                const locationLabel =
+                  u.role === 'admin'
+                    ? 'All Locations'
+                    : state.locations.find((location) => location.id === u.locationId)?.name || 'Unassigned';
+                const statusLabel = u.status === 'active' ? 'Active' : 'Inactive';
+
+                return (
                 <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -72,27 +86,37 @@ export default function UserManagement() {
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${u.role === 'Admin' ? 'border-[var(--color-brand-light-clay)] bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400' : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400'}`}>
-                      {u.role === 'Admin' && <Shield size={12} />}
-                      {u.role}
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${roleLabel === 'Admin' ? 'border-[var(--color-brand-light-clay)] bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400' : 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400'}`}>
+                      {roleLabel === 'Admin' && <Shield size={12} />}
+                      {roleLabel}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">{u.location}</td>
+                  <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">{locationLabel}</td>
                   <td className="px-6 py-4">
-                    <span className={`text-xs font-bold uppercase ${u.status === 'Active' ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>{u.status}</span>
+                    <span className={`text-xs font-bold uppercase ${statusLabel === 'Active' ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`}>{statusLabel}</span>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
                       <button className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors">
                         <Edit2 size={16} />
                       </button>
-                      <button className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 rounded-lg text-red-600 dark:text-red-400 transition-colors">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await deactivateUser(u.id);
+                          } catch (error) {
+                            window.alert(error?.message || 'Unable to update user status.');
+                          }
+                        }}
+                        className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 rounded-lg text-red-600 dark:text-red-400 transition-colors"
+                      >
                         <Trash2 size={16} />
                       </button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -115,22 +139,55 @@ export default function UserManagement() {
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
-                  <input type="text" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
+                  <input type="text" value={userName} onChange={(e) => setUserName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Email</label>
-                  <input type="email" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
+                  <input type="email" value={userEmail} onChange={(e) => setUserEmail(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Role</label>
-                  <select className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]">
-                    <option>Receptionist</option>
-                    <option>Admin</option>
+                  <select value={userRole} onChange={(e) => setUserRole(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]">
+                    <option value="receptionist">Receptionist</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
+                {userRole === 'receptionist' ? (
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Assigned Location</label>
+                    <select value={userLocationId} onChange={(e) => setUserLocationId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]">
+                      <option value="" disabled>Select a location...</option>
+                      {state.locations.map((location) => (
+                        <option key={location.id} value={location.id}>{location.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <div className="pt-4 flex gap-3">
                   <button onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                  <button onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">Save User</button>
+                  <button onClick={async () => {
+                    if (!userName.trim() || !userEmail.trim()) {
+                      window.alert('Name and email are required.');
+                      return;
+                    }
+
+                    if (userRole === 'receptionist' && !userLocationId) {
+                      window.alert('Select a location for the receptionist.');
+                      return;
+                    }
+
+                    try {
+                      await createUser({
+                        name: userName,
+                        email: userEmail,
+                        role: userRole,
+                        locationId: userRole === 'receptionist' ? userLocationId : null,
+                      });
+                      setIsModalOpen(false);
+                    } catch (error) {
+                      window.alert(error?.message || 'Unable to create user.');
+                    }
+                  }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">Save User</button>
                 </div>
               </div>
             </motion.div>

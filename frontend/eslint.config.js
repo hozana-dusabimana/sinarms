@@ -23,7 +23,9 @@ export default defineConfig([
       },
     },
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // `framer-motion`'s `<motion.div>` uses a JSX member expression which this config's
+      // minimal rule set does not recognize as a variable usage. Ignore the `motion` binding.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^(motion|[A-Z_])' }],
     },
   },
 ])

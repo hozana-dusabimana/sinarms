@@ -2,18 +2,27 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useSinarms } from '../../context/SinarmsContext';
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login } = useSinarms();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if(email && password) {
-      const role = email.toLowerCase().includes('admin') ? 'admin' : 'receptionist';
-      localStorage.setItem('sinarms_role', role);
+    try {
+      const result = await login({ email, password });
+      if (!result.ok) {
+        window.alert(result.message || 'Unable to sign in.');
+        return;
+      }
+
+      localStorage.setItem('sinarms_role', result.user?.role || 'admin');
       navigate('/staff/dashboard');
+    } catch (err) {
+      window.alert(err?.message || 'Unable to sign in.');
     }
   };
 
@@ -76,10 +85,10 @@ export default function LoginPage() {
           </div>
 
           <div className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-            <span className="block font-bold mb-2">Mock Role Access:</span>
+            <span className="block font-bold mb-2">Demo credentials:</span>
             <div className="space-y-1">
-              <p>Type <strong className="text-slate-700 dark:text-slate-200 font-mono">admin@</strong>... for Full Admin</p>
-              <p>Type <strong className="text-slate-700 dark:text-slate-200 font-mono">reception@</strong>... for Receptionist</p>
+              <p><strong className="text-slate-700 dark:text-slate-200 font-mono">admin@ruliba.rw</strong> / <strong className="text-slate-700 dark:text-slate-200 font-mono">Admin123!</strong></p>
+              <p><strong className="text-slate-700 dark:text-slate-200 font-mono">reception@ruliba.rw</strong> / <strong className="text-slate-700 dark:text-slate-200 font-mono">Reception123!</strong></p>
             </div>
           </div>
 

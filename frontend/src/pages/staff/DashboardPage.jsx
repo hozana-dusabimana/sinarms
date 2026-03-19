@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, MapPin, AlertCircle, ShieldAlert, X, ChevronRight, Clock, Map as MapIcon, Users } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
+import { useSinarms } from '../../context/SinarmsContext';
+import { getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
 
 // Leaflet default icon fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -12,21 +14,62 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const mockVisitors = [
-  { id: 1, name: 'Jean Bosco', dest: 'HR Dept', zone: 'Public Corridor', duration: 15, status: 'moving', node: '201' },
-  { id: 2, name: 'Marie Claire', dest: 'Finance Office', zone: 'Waiting Area', duration: 5, status: 'idle', node: '102' },
-  { id: 3, name: 'Guest 842', dest: 'Server Room', zone: 'Restricted Zone B', duration: 42, status: 'alert', node: '304' },
-];
-
-const mockAlerts = [
-  { id: 1, visitor: 'Guest 842', type: 'RESTRICTED_ZONE', time: '2m ago', severity: 'high' },
-  { id: 2, visitor: 'Marie Claire', type: 'IDLE_TIMEOUT', time: '15m ago', severity: 'medium' }
-];
-
 export default function DashboardPage() {
+  const { state, analytics, currentUser, activeAlerts, acknowledgeAlert, checkoutVisitor, registerVisitor } = useSinarms();
   const [activeTab, setActiveTab] = useState('list');
-  const [alerts, setAlerts] = useState(mockAlerts);
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
+  const [manualName, setManualName] = useState('');
+  const [manualIdOrPhone, setManualIdOrPhone] = useState('');
+  const [manualDestinationNodeId, setManualDestinationNodeId] = useState('');
+  const [manualHostName, setManualHostName] = useState('');
+
+  const scopedVisitors = state.visitors || [];
+  const activeVisitors = scopedVisitors.filter((visitor) => visitor.status === 'active');
+  const location = currentUser?.locationId
+    ? state.locations.find((entry) => entry.id === currentUser.locationId) || null
+    : null;
+  const locationMap = location ? getLocationMap(state, location.id) : null;
+  const destinationOptions = (locationMap?.nodes || [])
+    .filter((node) => node.type !== 'exit' && node.type !== 'checkpoint')
+    .filter((node) => node.type === 'office')
+    .slice()
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  const baseLat = -1.9443;
+  const baseLng = 30.0621;
+  const scale = 0.00002;
+  function nodeToLatLng(visitor) {
+    const map = getLocationMap(state, visitor.locationId);
+    const node = getNode(map, visitor.currentNodeId);
+    if (!node) {
+      return null;
+    }
+
+    return [
+      baseLat + (Number(node.y || 50) - 50) * scale,
+      baseLng + (Number(node.x || 50) - 50) * scale,
+    ];
+  }
+
+  function visitorStatus(visitor) {
+    if (activeAlerts.some((alert) => alert.visitorId === visitor.id)) {
+      return 'alert';
+    }
+
+    const idleMinutes = visitor.lastPositionUpdateAt ? minutesBetween(visitor.lastPositionUpdateAt) : 0;
+    if (idleMinutes >= 25) {
+      return 'idle';
+    }
+
+    return 'moving';
+  }
+
+  function alertAge(alert) {
+    const minutes = minutesBetween(alert.triggeredAt);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.round(minutes / 60);
+    return `${hours}h ago`;
+  }
 
   return (
     <div className="flex flex-col h-full space-y-6">
@@ -93,13 +136,20 @@ export default function DashboardPage() {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
                   
-                  {/* Simulated live visitor nodes on the real map */}
-                  <Marker position={[-1.9443, 30.0621]}>
-                    <Popup>Jean Bosco</Popup>
-                  </Marker>
-                  <Marker position={[-1.9445, 30.0623]}>
-                    <Popup>Marie Claire</Popup>
-                  </Marker>
+                  {activeVisitors
+                    .map((visitor) => {
+                      const position = nodeToLatLng(visitor);
+                      if (!position) {
+                        return null;
+                      }
+
+                      return (
+                        <Marker key={visitor.id} position={position}>
+                          <Popup>{visitor.name}</Popup>
+                        </Marker>
+                      );
+                    })
+                    .filter(Boolean)}
                 </MapContainer>
               </div>
             ) : (
@@ -115,31 +165,50 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                    {mockVisitors.map(v => (
-                      <tr key={v.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer">
+                    {activeVisitors.map((visitor) => {
+                      const map = getLocationMap(state, visitor.locationId);
+                      const destinationNode = getNode(map, visitor.destinationNodeId);
+                      const currentNode = getNode(map, visitor.currentNodeId);
+                      const status = visitorStatus(visitor);
+                      const duration = visitor.durationMin || minutesBetween(visitor.checkinTime);
+                      const zoneLabel = currentNode ? currentNode.label : visitor.currentNodeId;
+
+                      return (
+                      <tr key={visitor.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group cursor-pointer">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${v.status === 'alert' ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
-                              {v.name.charAt(0)}
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${status === 'alert' ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400' : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200'}`}>
+                              {visitor.name.charAt(0)}
                             </div>
-                            <span className="font-bold text-slate-800 dark:text-slate-200">{v.name}</span>
+                            <span className="font-bold text-slate-800 dark:text-slate-200">{visitor.name}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">{v.dest}</td>
+                        <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">{destinationNode?.label || visitor.destinationText}</td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${v.status === 'alert' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400' : v.status === 'idle' ? 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-400' : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300'}`}>
-                            {v.status === 'alert' && <AlertCircle size={12} />}
-                            {v.zone}
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${status === 'alert' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400' : status === 'idle' ? 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-400' : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300'}`}>
+                            {status === 'alert' && <AlertCircle size={12} />}
+                            {zoneLabel}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-mono text-sm text-slate-500 dark:text-slate-400">{v.duration} min</td>
+                        <td className="px-6 py-4 font-mono text-sm text-slate-500 dark:text-slate-400">{duration} min</td>
                         <td className="px-6 py-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button className="text-sm font-bold text-[var(--color-brand-terracotta)] dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-3 py-1 bg-red-50 dark:bg-red-500/10 rounded-md">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await checkoutVisitor(visitor.id, { manual: true });
+                              } catch (error) {
+                                window.alert(error?.message || 'Unable to check out visitor.');
+                              }
+                            }}
+                            className="text-sm font-bold text-[var(--color-brand-terracotta)] dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-3 py-1 bg-red-50 dark:bg-red-500/10 rounded-md"
+                          >
                             Check-Out
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -156,18 +225,22 @@ export default function DashboardPage() {
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <ShieldAlert size={18} className="text-red-500" /> Security Alerts
               </h3>
-              <span className="bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{alerts.length}</span>
+              <span className="bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{activeAlerts.length}</span>
             </div>
 
             <div className="p-4 space-y-3 flex-1 overflow-auto custom-scrollbar relative z-10">
               <AnimatePresence>
-                {alerts.length === 0 ? (
+                {activeAlerts.length === 0 ? (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-3 pb-8">
                     <ShieldAlert size={48} className="opacity-20" />
                     <p className="font-bold">No active alerts</p>
                   </motion.div>
                 ) : (
-                  alerts.map(alert => (
+                  activeAlerts.map((alert) => {
+                    const alertVisitor = state.visitors.find((visitor) => visitor.id === alert.visitorId);
+                    const visitorLabel = alertVisitor?.name || alert.visitorId;
+
+                    return (
                     <motion.div 
                       key={alert.id}
                       initial={{ opacity: 0, x: 20 }}
@@ -178,21 +251,28 @@ export default function DashboardPage() {
                       <div className={`absolute top-0 left-0 w-1.5 h-full ${alert.severity === 'high' ? 'bg-red-500' : 'bg-yellow-400'}`} />
                       <div className="pl-2 pr-6">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{alert.visitor}</span>
-                          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1"><Clock size={10} /> {alert.time}</span>
+                          <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{visitorLabel}</span>
+                          <span className="text-xs font-semibold text-slate-500 flex items-center gap-1"><Clock size={10} /> {alertAge(alert)}</span>
                         </div>
                         <p className={`text-xs font-semibold uppercase tracking-wider ${alert.severity === 'high' ? 'text-red-600 dark:text-red-400' : 'text-yellow-600 dark:text-yellow-500'}`}>
                           {alert.type.replace('_', ' ')}
                         </p>
                       </div>
                       <button 
-                        onClick={() => setAlerts(alerts.filter(a => a.id !== alert.id))}
+                        onClick={async () => {
+                          try {
+                            await acknowledgeAlert(alert.id);
+                          } catch (error) {
+                            window.alert(error?.message || 'Unable to acknowledge alert.');
+                          }
+                        }}
                         className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${alert.severity === 'high' ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-500/30 dark:hover:bg-red-500/50 dark:text-red-300' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-500/30 dark:hover:bg-yellow-500/50 dark:text-yellow-300'}`}
                       >
                         <X size={14} strokeWidth={3} />
                       </button>
                     </motion.div>
-                  ))
+                    );
+                  })
                 )}
               </AnimatePresence>
             </div>
@@ -202,11 +282,11 @@ export default function DashboardPage() {
             <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Quick Stats</h4>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                <p className="text-2xl font-black text-slate-900 dark:text-white">142</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white">{analytics.totalVisitors}</p>
                 <p className="text-xs font-bold text-slate-500">Total Today</p>
               </div>
               <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                <p className="text-2xl font-black text-slate-900 dark:text-white">38</p>
+                <p className="text-2xl font-black text-slate-900 dark:text-white">{analytics.averageDuration}</p>
                 <p className="text-xs font-bold text-slate-500">Avg Duration</p>
               </div>
             </div>
@@ -232,23 +312,95 @@ export default function DashboardPage() {
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
-                  <input type="text" placeholder="Visitor Name" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
+                  <input
+                    type="text"
+                    value={manualName}
+                    onChange={(e) => setManualName(e.target.value)}
+                    placeholder="Visitor Name"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">ID or Phone</label>
+                  <input
+                    type="text"
+                    value={manualIdOrPhone}
+                    onChange={(e) => setManualIdOrPhone(e.target.value)}
+                    placeholder="ID number or phone"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Destination</label>
-                  <select className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]">
-                    <option>HR Office (Node 201)</option>
-                    <option>Finance (Node 102)</option>
-                    <option>Server Room (Node 304)</option>
+                  <select
+                    value={manualDestinationNodeId}
+                    onChange={(e) => setManualDestinationNodeId(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
+                  >
+                    <option value="" disabled>
+                      Select destination...
+                    </option>
+                    {destinationOptions.map((node) => (
+                      <option key={node.id} value={node.id}>
+                        {node.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Host Name (Optional)</label>
-                  <input type="text" placeholder="Whom are they visiting?" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
+                  <input
+                    type="text"
+                    value={manualHostName}
+                    onChange={(e) => setManualHostName(e.target.value)}
+                    placeholder="Whom are they visiting?"
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
+                  />
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button onClick={() => setIsRegistrationModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                  <button onClick={() => setIsRegistrationModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">Confirm Registration</button>
+                  <button
+                    onClick={async () => {
+                      if (!currentUser?.organizationId || !currentUser?.locationId) {
+                        window.alert('Your account is not assigned to a location.');
+                        return;
+                      }
+
+                      if (!manualName.trim() || !manualDestinationNodeId) {
+                        window.alert('Please provide the visitor name and destination.');
+                        return;
+                      }
+
+                      try {
+                        const map = getLocationMap(state, currentUser.locationId);
+                        const node = getNode(map, manualDestinationNodeId);
+                        const destinationText = node?.label || 'Destination';
+
+                        await registerVisitor({
+                          name: manualName,
+                          idOrPhone: manualIdOrPhone,
+                          destinationText,
+                          language: 'en',
+                          organizationId: currentUser.organizationId,
+                          locationId: currentUser.locationId,
+                          source: 'manual',
+                          hostName: manualHostName,
+                          destinationNodeId: manualDestinationNodeId,
+                        });
+
+                        setIsRegistrationModalOpen(false);
+                        setManualName('');
+                        setManualIdOrPhone('');
+                        setManualDestinationNodeId('');
+                        setManualHostName('');
+                      } catch (error) {
+                        window.alert(error?.message || 'Unable to register visitor.');
+                      }
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity"
+                  >
+                    Confirm Registration
+                  </button>
                 </div>
               </div>
             </motion.div>

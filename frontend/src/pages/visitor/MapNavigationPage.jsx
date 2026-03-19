@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Navigation2, CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
+import { useSinarms } from '../../context/SinarmsContext';
+import { getLocationMap, getNode } from '../../lib/sinarmsEngine';
 
 const MOCK_STEPS = [
   { id: 1, text: 'Walk straight past the reception desk.', icon: <ChevronRight className="rotate-[-90deg]" size={24} />, distance: 15, done: true },
@@ -50,29 +52,75 @@ const activePersonIcon = L.divIcon({
 
 export default function MapNavigationPage() {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1);
+  const routerLocation = useLocation();
+  const { state, currentVisitor, setCurrentVisitor } = useSinarms();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [currentPosition, setCurrentPosition] = useState(KIGALI_ROUTE[0]);
 
-  // Real-time GPS Tracking
   useEffect(() => {
-    let watchId;
-    if ('geolocation' in navigator) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude } = position.coords;
-          setCurrentPosition([latitude, longitude]);
-        },
-        (error) => {
-          console.warn("GPS tracking error:", error);
-        },
-        { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
-      );
+    const visitorIdFromRoute = routerLocation.state?.visitorId;
+    if (visitorIdFromRoute && currentVisitor?.id !== visitorIdFromRoute) {
+      setCurrentVisitor(visitorIdFromRoute);
     }
-    return () => {
-      if (watchId) navigator.geolocation.clearWatch(watchId);
-    };
-  }, []);
+  }, [currentVisitor?.id, routerLocation.state, setCurrentVisitor]);
+
+  if (!currentVisitor) {
+    return <Navigate to="/visit" replace />;
+  }
+
+  const map = getLocationMap(state, currentVisitor.locationId);
+  const baseLat = -1.9443;
+  const baseLng = 30.0621;
+  const scale = 0.00002;
+
+  function toLatLng(nodeId) {
+    const node = getNode(map, nodeId);
+    if (!node) {
+      return null;
+    }
+
+    return [
+      baseLat + (Number(node.y || 50) - 50) * scale,
+      baseLng + (Number(node.x || 50) - 50) * scale,
+    ];
+  }
+
+  const routePositions = (currentVisitor.routeNodeIds || [])
+    .map((nodeId) => toLatLng(nodeId))
+    .filter(Boolean);
+  const currentPosition = toLatLng(currentVisitor.currentNodeId) || routePositions[0] || KIGALI_ROUTE[0];
+  const destinationPosition =
+    toLatLng(currentVisitor.destinationNodeId) ||
+    routePositions[routePositions.length - 1] ||
+    KIGALI_ROUTE[KIGALI_ROUTE.length - 1];
+
+  const currentIndex = (currentVisitor.routeNodeIds || []).indexOf(currentVisitor.currentNodeId);
+  const nextStep = (currentVisitor.routeSteps || []).find((step) => {
+    const stepIndex = (currentVisitor.routeNodeIds || []).indexOf(step.nodeId);
+    return stepIndex > currentIndex;
+  });
+  const nextStepNodeId = nextStep?.nodeId || null;
+
+  const liveSteps = currentVisitor.routeSteps?.length
+    ? currentVisitor.routeSteps.map((step, index) => {
+        const stepNodeIndex = (currentVisitor.routeNodeIds || []).indexOf(step.nodeId);
+        const isDone = stepNodeIndex !== -1 && stepNodeIndex <= currentIndex;
+        const isCurrent = step.nodeId === nextStepNodeId;
+
+        let icon = <ChevronRight className="rotate-[-90deg]" size={24} />;
+        if (step.direction === 'left') icon = <CornerUpLeft size={24} />;
+        if (step.direction === 'right') icon = <CornerUpRight size={24} />;
+        if (step.nodeId === currentVisitor.destinationNodeId) icon = <CheckCircle2 size={24} />;
+
+        return {
+          id: step.step || index + 1,
+          text: step.instruction,
+          icon,
+          distance: Number(step.distanceM || 0),
+          done: isDone,
+          current: isCurrent,
+        };
+      })
+    : MOCK_STEPS;
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden relative">
@@ -98,7 +146,7 @@ export default function MapNavigationPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
           
-          <Polyline positions={KIGALI_ROUTE} pathOptions={{ color: '#cd5c5c', weight: 4, dashArray: '10, 10' }} />
+          <Polyline positions={routePositions.length ? routePositions : KIGALI_ROUTE} pathOptions={{ color: '#cd5c5c', weight: 4, dashArray: '10, 10' }} />
           
           {/* Live Visitor Position */}
           <Marker position={currentPosition} icon={activePersonIcon}>
@@ -107,7 +155,7 @@ export default function MapNavigationPage() {
             </Popup>
           </Marker>
 
-          <Marker position={KIGALI_ROUTE[KIGALI_ROUTE.length - 1]} icon={customPinIcon}>
+          <Marker position={destinationPosition} icon={customPinIcon}>
             <Popup>
               <div className="text-center font-bold text-red-600">HR Office 104</div>
             </Popup>
@@ -131,7 +179,7 @@ export default function MapNavigationPage() {
         </div>
         
         <div className="space-y-4 relative before:absolute before:inset-y-0 before:left-6 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 -ml-2 pl-2">
-          {MOCK_STEPS.map((step, idx) => (
+          {liveSteps.map((step) => (
             <div key={step.id} className={`flex items-start gap-4 relative z-10 ${step.done ? 'opacity-50' : 'opacity-100'}`}>
               <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-4 border-white dark:border-[#0b101e] shadow-sm transition-colors ${
                 step.current ? 'bg-[var(--color-brand-terracotta)] text-white scale-110 shadow-[0_0_15px_rgba(205,92,92,0.4)] dark:bg-red-500 dark:shadow-[0_0_15px_rgba(239,68,68,0.4)]' : 

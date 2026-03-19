@@ -1,23 +1,115 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, User, Hash, ArrowRight, Loader } from 'lucide-react';
+import { useSinarms } from '../../context/SinarmsContext';
 
 export default function CheckInPage() {
   const navigate = useNavigate();
+  const { state, classifyVisitorDestination, registerVisitor } = useSinarms();
   const [lang, setLang] = useState('EN');
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
   const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedLocationId, setSelectedLocationId] = useState('');
+  const [selectedDestination, setSelectedDestination] = useState('');
 
-  const handleSubmit = (e) => {
+  const activeOrganization =
+    state.organizations.find((organization) => organization.status === 'active') || state.organizations[0] || null;
+  const activeLocation =
+    state.locations.find(
+      (location) =>
+        location.status === 'active' && (!activeOrganization || location.organizationId === activeOrganization.id),
+    ) ||
+    state.locations.find((location) => location.status === 'active') ||
+    state.locations[0] ||
+    null;
+
+  useEffect(() => {
+    if (!selectedLocationId && activeLocation) {
+      setSelectedLocationId(activeLocation.id);
+    }
+  }, [activeLocation, selectedLocationId]);
+
+  const selectedLocation = state.locations.find((location) => location.id === selectedLocationId) || activeLocation;
+  const selectedOrganization =
+    (selectedLocation
+      ? state.organizations.find((organization) => organization.id === selectedLocation.organizationId)
+      : null) || activeOrganization;
+
+  const destinationOptions = useMemo(() => {
+    const map = (selectedLocationId && state.maps[selectedLocationId]) || null;
+    if (!map?.nodes?.length) {
+      return [];
+    }
+
+    return map.nodes
+      .filter((node) => node.type !== 'exit' && node.type !== 'checkpoint')
+      .filter((node) => node.type === 'office')
+      .slice()
+      .sort((left, right) => left.label.localeCompare(right.label))
+      .map((node) => ({ value: node.id, label: node.label }));
+  }, [selectedLocationId, state.maps]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
     
-    // Mock AI Intent processing delay
-    setTimeout(() => {
+    const language = lang === 'FR' ? 'fr' : lang === 'RW' ? 'rw' : 'en';
+
+    if (!selectedOrganization || !selectedLocation) {
       setIsProcessing(false);
-      navigate('/visit/navigate');
-    }, 2000);
+      window.alert('System is still loading locations. Please try again.');
+      return;
+    }
+
+    try {
+      let destinationNodeId = null;
+
+      if (selectedDestination && selectedDestination !== 'other') {
+        destinationNodeId = selectedDestination;
+      } else {
+        const decision = await classifyVisitorDestination({
+          locationId: selectedLocation.id,
+          destinationText: formData.destination,
+          language,
+        });
+
+        if (decision.status === 'retry') {
+          window.alert(decision.message || 'We could not find that destination. Please describe it differently.');
+          return;
+        }
+
+        destinationNodeId =
+          decision.status === 'resolved'
+            ? decision.destinationNodeId
+            : decision.alternatives?.[0]?.nodeId || null;
+
+        if (!destinationNodeId) {
+          window.alert(decision.message || 'We could not find that destination. Please describe it differently.');
+          return;
+        }
+      }
+
+      const visitor = await registerVisitor({
+        name: formData.name,
+        idOrPhone: formData.idOrPhone,
+        destinationText:
+          selectedDestination && selectedDestination !== 'other'
+            ? destinationOptions.find((option) => option.value === selectedDestination)?.label || formData.destination
+            : formData.destination,
+        language,
+        organizationId: selectedOrganization.id,
+        locationId: selectedLocation.id,
+        source: 'self',
+        destinationNodeId,
+      });
+
+      navigate('/visit/navigate', { state: { visitorId: visitor.id } });
+    } catch (err) {
+      window.alert(err?.message || 'Unable to start navigation right now.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const translations = {
@@ -60,6 +152,30 @@ export default function CheckInPage() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Location</label>
+            <div className="relative group">
+              <select
+                value={selectedLocationId}
+                onChange={(e) => {
+                  setSelectedLocationId(e.target.value);
+                  setSelectedDestination('');
+                  setFormData((prev) => ({ ...prev, destination: '' }));
+                }}
+                className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
+              >
+                {(state.locations || []).map((location) => {
+                  const orgName = state.organizations.find((org) => org.id === location.organizationId)?.name;
+                  return (
+                    <option key={location.id} value={location.id}>
+                      {orgName ? `${orgName} | ${location.name}` : location.name}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
             <div className="relative group">
               <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)] transition-colors" />
@@ -89,14 +205,42 @@ export default function CheckInPage() {
 
           <div className="space-y-1 pt-2">
             <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t.dest}</label>
-            <textarea 
+            <select
+              value={selectedDestination}
+              onChange={(e) => {
+                const next = e.target.value;
+                setSelectedDestination(next);
+                if (next && next !== 'other') {
+                  const label = destinationOptions.find((option) => option.value === next)?.label || '';
+                  setFormData((prev) => ({ ...prev, destination: label }));
+                } else {
+                  setFormData((prev) => ({ ...prev, destination: '' }));
+                }
+              }}
+              className="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all shadow-inner"
               required
-              rows={3}
-              placeholder={t.placeholder}
-              className="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
-              value={formData.destination}
-              onChange={(e) => setFormData({...formData, destination: e.target.value})}
-            />
+            >
+              <option value="" disabled>
+                Select a destination...
+              </option>
+              {destinationOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              <option value="other">Other (type it)</option>
+            </select>
+
+            {selectedDestination === 'other' ? (
+              <textarea
+                required
+                rows={3}
+                placeholder={t.placeholder}
+                className="mt-3 w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
+                value={formData.destination}
+                onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
+              />
+            ) : null}
           </div>
 
           <AnimatePresence mode="wait">
