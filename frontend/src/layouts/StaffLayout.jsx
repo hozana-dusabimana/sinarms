@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, LogOut, Map, Settings, Users, Activity, Menu, X, Users2, MessageSquare, TerminalSquare } from 'lucide-react';
+import { LayoutDashboard, LogOut, Users, Activity, Menu, X, Users2, MessageSquare, TerminalSquare } from 'lucide-react';
 import { useState } from 'react';
 import { useSinarms } from '../context/SinarmsContext';
 
@@ -21,7 +21,6 @@ export default function StaffLayout() {
 
   const allNavItems = [
     { label: 'Live Dashboard', path: '/staff/dashboard', icon: <LayoutDashboard size={20} />, roles: ['admin', 'receptionist'] },
-    { label: 'Map Editor', path: '/staff/map-editor', icon: <Map size={20} />, roles: ['admin'] },
     { label: 'Organizations', path: '/staff/organizations', icon: <Users size={20} />, roles: ['admin'] },
     { label: 'Analytics', path: '/staff/analytics', icon: <Activity size={20} />, roles: ['admin'] },
     { label: 'Users & Roles', path: '/staff/users', icon: <Users2 size={20} />, roles: ['admin'] },

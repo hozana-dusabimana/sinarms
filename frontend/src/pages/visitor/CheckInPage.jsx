@@ -163,14 +163,17 @@ export default function CheckInPage() {
                 }}
                 className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
               >
-                {(state.locations || []).map((location) => {
-                  const orgName = state.organizations.find((org) => org.id === location.organizationId)?.name;
-                  return (
-                    <option key={location.id} value={location.id}>
-                      {orgName ? `${orgName} | ${location.name}` : location.name}
-                    </option>
-                  );
-                })}
+                {(state.locations || [])
+                  .filter((location) => location.status === 'active')
+                  .map((location) => {
+                    const orgName = state.organizations.find((org) => org.id === location.organizationId && org.status === 'active')?.name;
+                    if (!orgName) return null;
+                    return (
+                      <option key={location.id} value={location.id}>
+                        {`${orgName} | ${location.name}`}
+                      </option>
+                    );
+                  })}
               </select>
             </div>
           </div>
