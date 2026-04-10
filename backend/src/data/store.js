@@ -72,6 +72,141 @@ function ensureHydrated(state) {
   return refreshAlerts(nextState);
 }
 
+function removeLegacyPartnerDefaults(state) {
+  const nextState = clone(state);
+  let changed = false;
+
+  const legacyOrgId = 'org-kigali-industries';
+  const legacyLocationIds = new Set(
+    (nextState.locations || [])
+      .filter((location) => location.organizationId === legacyOrgId || location.id === 'loc-kigali-industries')
+      .map((location) => location.id),
+  );
+
+  if ((nextState.organizations || []).some((organization) => organization.id === legacyOrgId)) {
+    nextState.organizations = nextState.organizations.filter((organization) => organization.id !== legacyOrgId);
+    changed = true;
+  }
+
+  if (legacyLocationIds.size > 0) {
+    nextState.locations = (nextState.locations || []).filter((location) => !legacyLocationIds.has(location.id));
+    changed = true;
+  }
+
+  const removedVisitorIds = new Set(
+    (nextState.visitors || [])
+      .filter(
+        (visitor) =>
+          visitor.organizationId === legacyOrgId ||
+          (visitor.locationId && legacyLocationIds.has(visitor.locationId)),
+      )
+      .map((visitor) => visitor.id),
+  );
+
+  if (removedVisitorIds.size > 0) {
+    nextState.visitors = nextState.visitors.filter((visitor) => !removedVisitorIds.has(visitor.id));
+    nextState.visitorPositions = (nextState.visitorPositions || []).filter(
+      (position) => !removedVisitorIds.has(position.visitorId),
+    );
+    nextState.alerts = (nextState.alerts || []).filter((alert) => !removedVisitorIds.has(alert.visitorId));
+    nextState.notifications = (nextState.notifications || []).filter(
+      (notification) => !notification.visitorId || !removedVisitorIds.has(notification.visitorId),
+    );
+    changed = true;
+  }
+
+  const originalUsersLength = (nextState.users || []).length;
+  nextState.users = (nextState.users || []).filter(
+    (user) => user.organizationId !== legacyOrgId && (!user.locationId || !legacyLocationIds.has(user.locationId)),
+  );
+  if (nextState.users.length !== originalUsersLength) {
+    changed = true;
+  }
+
+  const originalFaqLength = (nextState.faq || []).length;
+  nextState.faq = (nextState.faq || []).filter((entry) => entry.organizationId !== legacyOrgId);
+  if (nextState.faq.length !== originalFaqLength) {
+    changed = true;
+  }
+
+  if (nextState.maps) {
+    legacyLocationIds.forEach((locationId) => {
+      if (nextState.maps[locationId]) {
+        delete nextState.maps[locationId];
+        changed = true;
+      }
+    });
+  }
+
+  return { state: nextState, changed };
+}
+
+function mergeMissingSeedEntities(state) {
+  const nextState = clone(state);
+  const seedState = createSeedState();
+  let changed = false;
+
+  nextState.organizations = nextState.organizations || [];
+  nextState.locations = nextState.locations || [];
+  nextState.maps = nextState.maps || {};
+
+  const orgIds = new Set(nextState.organizations.map((organization) => organization.id));
+  seedState.organizations.forEach((organization) => {
+    if (!orgIds.has(organization.id)) {
+      nextState.organizations.push(clone(organization));
+      orgIds.add(organization.id);
+      changed = true;
+    }
+  });
+
+  const locationIds = new Set(nextState.locations.map((location) => location.id));
+  seedState.locations.forEach((location) => {
+    if (!locationIds.has(location.id)) {
+      nextState.locations.push(clone(location));
+      locationIds.add(location.id);
+      changed = true;
+    }
+  });
+
+  Object.entries(seedState.maps || {}).forEach(([locationId, seedMap]) => {
+    const existingMap = nextState.maps[locationId];
+
+    if (!existingMap) {
+      nextState.maps[locationId] = clone(seedMap);
+      changed = true;
+      return;
+    }
+
+    existingMap.nodes = existingMap.nodes || [];
+    existingMap.edges = existingMap.edges || [];
+
+    const existingNodeIds = new Set(existingMap.nodes.map((node) => node.id));
+    (seedMap.nodes || []).forEach((node) => {
+      if (!existingNodeIds.has(node.id)) {
+        existingMap.nodes.push(clone(node));
+        existingNodeIds.add(node.id);
+        changed = true;
+      }
+    });
+
+    const existingEdgeIds = new Set(existingMap.edges.map((edge) => edge.id));
+    (seedMap.edges || []).forEach((edge) => {
+      if (!existingEdgeIds.has(edge.id)) {
+        existingMap.edges.push(clone(edge));
+        existingEdgeIds.add(edge.id);
+        changed = true;
+      }
+    });
+
+    if (!existingMap.floorplanImage && seedMap.floorplanImage) {
+      existingMap.floorplanImage = seedMap.floorplanImage;
+      changed = true;
+    }
+  });
+
+  return { state: nextState, changed };
+}
+
 function buildAnalyticsRows(state) {
   const buckets = new Map();
 
@@ -624,7 +759,15 @@ async function initStore() {
       if (Number(organizationCountRow.total) === 0) {
         await persistState(createSeedState());
       } else {
-        stateCache = await loadStateFromDatabase();
+        const loadedState = await loadStateFromDatabase();
+        const { state: cleanedState, changed: cleaned } = removeLegacyPartnerDefaults(loadedState);
+        const { state: mergedState, changed } = mergeMissingSeedEntities(cleanedState);
+
+        if (cleaned || changed) {
+          await persistState(mergedState);
+        } else {
+          stateCache = mergedState;
+        }
       }
 
       return stateCache;
