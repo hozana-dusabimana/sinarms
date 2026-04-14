@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, MapPin, AlertCircle, ShieldAlert, X, ChevronRight, Clock, Map as MapIcon, Users } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
 import { getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
@@ -13,6 +13,88 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
+
+// Inline SVG destination pin — no network dependency (same as visitor map).
+const pinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44"><path d="M16 2C8 2 2 8 2 16c0 10 14 26 14 26s14-16 14-26C30 8 24 2 16 2z" fill="#cd5c5c" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="16" r="5" fill="#ffffff"/></svg>`;
+const destinationPinIcon = new L.Icon({
+  iconUrl: `data:image/svg+xml;base64,${btoa(pinSvg)}`,
+  iconSize: [28, 38],
+  iconAnchor: [14, 36],
+  popupAnchor: [0, -32],
+});
+
+// Pulsing dot for active visitors (same pattern as MapNavigationPage).
+const visitorDotIcon = L.divIcon({
+  className: 'bg-transparent',
+  html: `<div class="relative flex items-center justify-center w-6 h-6">
+           <div class="absolute w-full h-full bg-blue-500 rounded-full animate-ping opacity-75"></div>
+           <div class="relative w-4 h-4 bg-blue-600 border-2 border-white rounded-full shadow-lg"></div>
+         </div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+const alertDotIcon = L.divIcon({
+  className: 'bg-transparent',
+  html: `<div class="relative flex items-center justify-center w-6 h-6">
+           <div class="absolute w-full h-full bg-red-500 rounded-full animate-ping opacity-75"></div>
+           <div class="relative w-4 h-4 bg-red-600 border-2 border-white rounded-full shadow-lg"></div>
+         </div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12],
+});
+
+function isValidLatLng(pos) {
+  return Array.isArray(pos)
+    && pos.length === 2
+    && typeof pos[0] === 'number' && !Number.isNaN(pos[0])
+    && typeof pos[1] === 'number' && !Number.isNaN(pos[1]);
+}
+
+function getNodeLatLng(node) {
+  if (node && node.lat != null && node.lng != null) {
+    const pos = [Number(node.lat), Number(node.lng)];
+    return isValidLatLng(pos) ? pos : null;
+  }
+  return null;
+}
+
+function buildRoutePositions(map, routeNodeIds) {
+  if (!map || !routeNodeIds || routeNodeIds.length < 2) return [];
+  const positions = [];
+  for (let i = 0; i < routeNodeIds.length - 1; i++) {
+    const fromId = routeNodeIds[i];
+    const toId = routeNodeIds[i + 1];
+    const edge = (map.edges || []).find((e) =>
+      (e.from === fromId && e.to === toId) || (e.from === toId && e.to === fromId)
+    );
+    if (edge?.gpsTrail?.length > 1) {
+      const trail = (edge.from === fromId ? edge.gpsTrail : [...edge.gpsTrail].reverse())
+        .filter(isValidLatLng);
+      const toAppend = positions.length > 0 ? trail.slice(1) : trail;
+      toAppend.forEach((p) => positions.push(p));
+    } else {
+      const fromPos = getNodeLatLng(getNode(map, fromId));
+      const toPos = getNodeLatLng(getNode(map, toId));
+      if (positions.length === 0 && isValidLatLng(fromPos)) positions.push(fromPos);
+      if (isValidLatLng(toPos)) positions.push(toPos);
+    }
+  }
+  return positions;
+}
+
+function FitBounds({ positions }) {
+  const map = useMap();
+  useEffect(() => {
+    const valid = (positions || []).filter(isValidLatLng);
+    if (valid.length >= 2) {
+      map.fitBounds(L.latLngBounds(valid), { padding: [40, 40], maxZoom: 19 });
+    } else if (valid.length === 1) {
+      map.setView(valid[0], 19);
+    }
+  }, [map, positions]);
+  return null;
+}
 
 export default function DashboardPage() {
   const { state, analytics, currentUser, activeAlerts, acknowledgeAlert, checkoutVisitor, registerVisitor } = useSinarms();
@@ -35,21 +117,28 @@ export default function DashboardPage() {
     .slice()
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const baseLat = -1.9443;
-  const baseLng = 30.0621;
-  const scale = 0.00002;
-  function nodeToLatLng(visitor) {
+  // Real lat/lng from the seeded map graph (each node carries lat/lng set by
+  // attachGeo). This plots visitors at their actual building coordinates
+  // instead of the old fake offset grid.
+  function visitorCurrentPosition(visitor) {
     const map = getLocationMap(state, visitor.locationId);
     const node = getNode(map, visitor.currentNodeId);
-    if (!node) {
-      return null;
-    }
-
-    return [
-      baseLat + (Number(node.y || 50) - 50) * scale,
-      baseLng + (Number(node.x || 50) - 50) * scale,
-    ];
+    return getNodeLatLng(node);
   }
+
+  // Collect all relevant positions for the current shift — used to centre/fit
+  // the map so it opens on the actual location and routes, not on a default.
+  const mapFitPositions = (() => {
+    if (!locationMap) return [];
+    const positions = [];
+    (locationMap.nodes || []).forEach((node) => {
+      const pos = getNodeLatLng(node);
+      if (isValidLatLng(pos)) positions.push(pos);
+    });
+    return positions;
+  })();
+
+  const mapCenter = mapFitPositions[0] || [-1.99585, 30.04020];
 
   function visitorStatus(visitor) {
     if (activeAlerts.some((alert) => alert.visitorId === visitor.id)) {
@@ -123,11 +212,11 @@ export default function DashboardPage() {
 
           <div className="flex-1 overflow-auto bg-slate-50/50 dark:bg-transparent relative custom-scrollbar">
             {activeTab === 'map' ? (
-              <div className="absolute inset-0 m-4 border-2 flex-none border-dashed border-slate-300 dark:border-slate-700 rounded-2xl bg-slate-200/50 dark:bg-black/20 overflow-hidden relative z-0 shadow-inner">
-                <MapContainer 
-                  center={[-1.9443, 30.0621]} 
-                  zoom={18} 
-                  scrollWheelZoom={true} 
+              <div className="absolute inset-0 m-4 rounded-2xl overflow-hidden relative z-0 shadow-xl border-4 border-slate-50 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900">
+                <MapContainer
+                  center={mapCenter}
+                  zoom={19}
+                  scrollWheelZoom={true}
                   className="w-full h-full z-0"
                   style={{ width: '100%', height: '100%', minHeight: '400px' }}
                 >
@@ -135,21 +224,76 @@ export default function DashboardPage() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  
-                  {activeVisitors
-                    .map((visitor) => {
-                      const position = nodeToLatLng(visitor);
-                      if (!position) {
-                        return null;
-                      }
 
+                  <FitBounds positions={mapFitPositions.length ? mapFitPositions : [mapCenter]} />
+
+                  {/* Destination pins for every seeded office/room so receptionists
+                      can see the full facility layout, not only visitor dots. */}
+                  {(locationMap?.nodes || [])
+                    .filter((node) => node && !['exit', 'checkpoint'].includes(node.type))
+                    .map((node) => {
+                      const pos = getNodeLatLng(node);
+                      if (!isValidLatLng(pos)) return null;
                       return (
-                        <Marker key={visitor.id} position={position}>
-                          <Popup>{visitor.name}</Popup>
-                        </Marker>
+                        <CircleMarker
+                          key={`node-${node.id}`}
+                          center={pos}
+                          radius={4}
+                          pathOptions={{ color: '#cd5c5c', fillColor: '#ffffff', fillOpacity: 1, weight: 2 }}
+                        >
+                          <Popup>
+                            <div className="text-center text-xs font-semibold">{node.label}</div>
+                          </Popup>
+                        </CircleMarker>
                       );
-                    })
-                    .filter(Boolean)}
+                    })}
+
+                  {/* Active visitor routes + their live dots + destination pins. */}
+                  {activeVisitors.map((visitor) => {
+                    const vmap = getLocationMap(state, visitor.locationId);
+                    const routePositions = buildRoutePositions(vmap, visitor.routeNodeIds);
+                    const currentPos = visitorCurrentPosition(visitor);
+                    const destNode = getNode(vmap, visitor.destinationNodeId);
+                    const destPos = getNodeLatLng(destNode);
+                    const isAlerting = activeAlerts.some((a) => a.visitorId === visitor.id);
+                    const icon = isAlerting ? alertDotIcon : visitorDotIcon;
+
+                    return (
+                      <Fragment key={`viz-${visitor.id}`}>
+                        {routePositions.length > 1 && (
+                          <Polyline
+                            positions={routePositions}
+                            pathOptions={{
+                              color: isAlerting ? '#ef4444' : '#cd5c5c',
+                              weight: 4,
+                              opacity: 0.8,
+                              lineCap: 'round',
+                              lineJoin: 'round',
+                            }}
+                          />
+                        )}
+                        {isValidLatLng(destPos) && (
+                          <Marker position={destPos} icon={destinationPinIcon}>
+                            <Popup>
+                              <div className="text-center text-xs font-bold text-red-600">
+                                {destNode?.label || 'Destination'}
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+                        {isValidLatLng(currentPos) && (
+                          <Marker position={currentPos} icon={icon}>
+                            <Popup>
+                              <div className="text-center font-bold">{visitor.name}</div>
+                              <div className="text-center text-xs text-slate-500">
+                                {getNode(vmap, visitor.currentNodeId)?.label || visitor.currentNodeId}
+                              </div>
+                            </Popup>
+                          </Marker>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </MapContainer>
               </div>
             ) : (

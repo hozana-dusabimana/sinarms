@@ -204,6 +204,18 @@ export function SinarmsProvider({ children }) {
     };
   }, [loadPublicBootstrap, loadStaffBootstrap, refreshCurrentVisitor]);
 
+  // Keep the staff dashboard in sync with self-check-ins / position updates
+  // coming from other devices. The backend emits socket events but the
+  // frontend does not (yet) subscribe to them, so a short poll is the
+  // simplest reliable fallback.
+  useEffect(() => {
+    if (!session?.user) return undefined;
+    const id = setInterval(() => {
+      loadStaffBootstrap().catch(() => {});
+    }, 10000);
+    return () => clearInterval(id);
+  }, [session?.user, loadStaffBootstrap]);
+
   const currentUser = session?.user || null;
   const currentVisitor = activeVisitorId
     ? state.visitors.find((visitor) => visitor.id === activeVisitorId) || null
