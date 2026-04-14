@@ -84,14 +84,6 @@ export default function LoginPage() {
             <a href="#" className="text-sm text-[var(--color-brand-terracotta)] hover:text-red-600 dark:text-red-400 font-semibold cursor-pointer">Forgot?</a>
           </div>
 
-          <div className="mt-2 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-            <span className="block font-bold mb-2">Demo credentials:</span>
-            <div className="space-y-1">
-              <p><strong className="text-slate-700 dark:text-slate-200 font-mono">admin@ruliba.rw</strong> / <strong className="text-slate-700 dark:text-slate-200 font-mono">Admin123!</strong></p>
-              <p><strong className="text-slate-700 dark:text-slate-200 font-mono">reception@ruliba.rw</strong> / <strong className="text-slate-700 dark:text-slate-200 font-mono">Reception123!</strong></p>
-            </div>
-          </div>
-
           <motion.button
             whileHover={{ scale: 1.01 }}
             whileTap={{ scale: 0.99 }}
