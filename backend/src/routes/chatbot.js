@@ -1,25 +1,24 @@
 const express = require('express');
 const { getState, mutateState } = require('../data/store');
-const { queryFaq, resolveDestinationForLocation } = require('../services/domain');
+const { chatbotRespond } = require('../services/domain');
 
 const router = express.Router();
 
 router.post('/query', async (req, res) => {
   const state = await getState();
-  const query = req.body.query || '';
-  const locationId = req.body.locationId || state.locations[0].id;
+  const locationId = req.body.locationId || (state.locations[0] ? state.locations[0].id : null);
 
-  if (/(navigate|direction|office|department|go to|where is|manager|meet)/i.test(query)) {
-    return res.json(resolveDestinationForLocation(state, locationId, query));
-  }
+  const result = await chatbotRespond(state, {
+    query: req.body.query || '',
+    locationId,
+    organizationId: req.body.organizationId || null,
+  });
 
-  const result = queryFaq(state, req.body.organizationId || null, query);
-
-  if (result.faqId) {
+  if (result && result.faqId) {
     await mutateState((draft) => {
       const faqEntry = draft.faq.find((entry) => entry.id === result.faqId);
       if (faqEntry) {
-        faqEntry.hitCount += 1;
+        faqEntry.hitCount = Number(faqEntry.hitCount || 0) + 1;
       }
       return draft;
     });

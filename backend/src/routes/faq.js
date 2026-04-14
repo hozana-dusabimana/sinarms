@@ -2,8 +2,28 @@ const express = require('express');
 const { getState, mutateState } = require('../data/store');
 const { requireAuth, requireRole } = require('../middleware/auth');
 const { appendAuditEntry, createId } = require('../services/engine');
+const aiClient = require('../services/aiClient');
 
 const router = express.Router();
+
+const FAQ_UPDATABLE = ['organizationId', 'language', 'question', 'answer', 'keywords'];
+
+function pick(source, allowed) {
+  const result = {};
+  if (!source) return result;
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
+function pushFaqToAiEngine(faq) {
+  Promise.resolve()
+    .then(() => aiClient.refreshFaq(faq))
+    .catch(() => null);
+}
 
 router.get('/', requireAuth, requireRole(['admin']), async (req, res) => {
   const state = await getState();
@@ -26,13 +46,14 @@ router.post('/', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'CREATE_FAQ',
       targetType: 'faq',
       targetId: faqId,
       details: `Created FAQ entry: ${req.body.question}.`,
     });
   });
+  pushFaqToAiEngine(nextState.faq);
   return res.status(201).json(nextState.faq.find((entry) => entry.id === faqId));
 });
 
@@ -42,11 +63,11 @@ router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     if (!faqEntry) {
       return draft;
     }
-    Object.assign(faqEntry, req.body || {});
+    Object.assign(faqEntry, pick(req.body, FAQ_UPDATABLE));
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_FAQ',
       targetType: 'faq',
       targetId: faqEntry.id,
@@ -57,6 +78,7 @@ router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
   if (!faqEntry) {
     return res.status(404).json({ message: 'FAQ entry not found.' });
   }
+  pushFaqToAiEngine(nextState.faq);
   return res.json(faqEntry);
 });
 
@@ -71,7 +93,7 @@ router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'DELETE_FAQ',
       targetType: 'faq',
       targetId: req.params.id,
@@ -79,6 +101,7 @@ router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     });
   });
 
+  pushFaqToAiEngine(nextState.faq);
   return res.json({ success: true, remaining: nextState.faq.length });
 });
 

@@ -16,10 +16,13 @@ const faqRoutes = require('./routes/faq');
 const aiRoutes = require('./routes/ai');
 const chatbotRoutes = require('./routes/chatbot');
 const bootstrapRoutes = require('./routes/bootstrap');
+const internalRoutes = require('./routes/internal');
 const { getState } = require('./data/store');
 
 function createApp() {
   const app = express();
+
+  app.set('trust proxy', true);
 
   app.use(
     cors({
@@ -53,6 +56,7 @@ function createApp() {
   app.use('/api/faq', faqRoutes);
   app.use('/api/chatbot', chatbotRoutes);
   app.use('/api/bootstrap', bootstrapRoutes);
+  app.use('/api/internal', internalRoutes);
   app.use('/ai', aiRoutes);
 
   app.use((error, _req, res, _next) => {

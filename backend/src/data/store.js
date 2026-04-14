@@ -180,6 +180,7 @@ function mergeMissingSeedEntities(state) {
     existingMap.nodes = existingMap.nodes || [];
     existingMap.edges = existingMap.edges || [];
 
+    const seedNodeById = Object.fromEntries((seedMap.nodes || []).map((n) => [n.id, n]));
     const existingNodeIds = new Set(existingMap.nodes.map((node) => node.id));
     (seedMap.nodes || []).forEach((node) => {
       if (!existingNodeIds.has(node.id)) {
@@ -189,11 +190,31 @@ function mergeMissingSeedEntities(state) {
       }
     });
 
+    existingMap.nodes.forEach((node) => {
+      const seedNode = seedNodeById[node.id];
+      if (!seedNode) return;
+      if ((node.lat == null || node.lng == null) && seedNode.lat != null && seedNode.lng != null) {
+        node.lat = seedNode.lat;
+        node.lng = seedNode.lng;
+        changed = true;
+      }
+    });
+
+    const seedEdgeById = Object.fromEntries((seedMap.edges || []).map((e) => [e.id, e]));
     const existingEdgeIds = new Set(existingMap.edges.map((edge) => edge.id));
     (seedMap.edges || []).forEach((edge) => {
       if (!existingEdgeIds.has(edge.id)) {
         existingMap.edges.push(clone(edge));
         existingEdgeIds.add(edge.id);
+        changed = true;
+      }
+    });
+
+    existingMap.edges.forEach((edge) => {
+      const seedEdge = seedEdgeById[edge.id];
+      if (!seedEdge) return;
+      if ((!edge.gpsTrail || edge.gpsTrail.length < 2) && seedEdge.gpsTrail) {
+        edge.gpsTrail = clone(seedEdge.gpsTrail);
         changed = true;
       }
     });

@@ -6,6 +6,19 @@ const { generateLocationQr } = require('../services/domain');
 
 const router = express.Router();
 
+const LOCATION_UPDATABLE = ['name', 'address', 'floorCount', 'description', 'status', 'qrCodeToken', 'receptionistIds'];
+
+function pick(source, allowed) {
+  const result = {};
+  if (!source) return result;
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
 router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
   const nextState = await mutateState((draft) => {
     const location = draft.locations.find((entry) => entry.id === req.params.id);
@@ -13,11 +26,11 @@ router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
       return draft;
     }
 
-    Object.assign(location, req.body || {});
+    Object.assign(location, pick(req.body, LOCATION_UPDATABLE));
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_LOCATION',
       targetType: 'location',
       targetId: location.id,
@@ -44,7 +57,7 @@ router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'TOGGLE_LOCATION',
       targetType: 'location',
       targetId: location.id,
@@ -71,7 +84,7 @@ router.put('/:id/map', requireAuth, requireRole(['admin']), async (req, res) => 
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_MAP',
       targetType: 'location',
       targetId: req.params.id,

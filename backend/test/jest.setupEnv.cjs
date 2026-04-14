@@ -13,3 +13,7 @@ process.env.DB_USER = process.env.DB_USER || 'root';
 process.env.DB_PASSWORD = process.env.DB_PASSWORD || '';
 process.env.DB_NAME = process.env.DB_NAME || process.env.TEST_DB_NAME || 'sinarms_test';
 
+// Keep the Node.js AI client from reaching a Python service during tests; the
+// backend's deterministic fallback path is exercised instead.
+process.env.AI_ENGINE_DISABLED = process.env.AI_ENGINE_DISABLED || '1';
+

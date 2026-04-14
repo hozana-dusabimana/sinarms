@@ -83,22 +83,22 @@ function classifyDestination(map, text) {
   const top = scoredNodes[0];
   const second = scoredNodes[1];
 
-  if (top.confidence < 0.5) {
+  if (top.confidence < 0.35) {
     return {
       status: 'retry',
       confidence: top.confidence,
       destinationNodeId: null,
-      alternatives: scoredNodes.slice(0, 2),
+      alternatives: scoredNodes.slice(0, 3),
       message: 'We could not find that destination. Please describe it differently or ask at the Reception desk.',
     };
   }
 
-  if (top.confidence < 0.8 || (second && Math.abs(top.confidence - second.confidence) < 0.15)) {
+  if (top.confidence < 0.65 || (second && Math.abs(top.confidence - second.confidence) < 0.1)) {
     return {
       status: 'confirm',
       confidence: top.confidence,
       destinationNodeId: null,
-      alternatives: scoredNodes.slice(0, 2),
+      alternatives: scoredNodes.slice(0, 3),
       message: 'Did you mean one of these destinations?',
     };
   }

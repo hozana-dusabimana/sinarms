@@ -30,7 +30,7 @@ router.put('/:id/permissions', requireAuth, requireRole(['admin']), async (req, 
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_PERMISSIONS',
       targetType: 'user',
       targetId: user.id,
@@ -57,7 +57,7 @@ router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'TOGGLE_USER',
       targetType: 'user',
       targetId: user.id,

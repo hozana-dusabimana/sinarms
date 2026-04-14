@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { Navigation2, CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize } from 'lucide-react';
+import { Navigation2, CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -17,13 +17,13 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
+// Inline SVG pin as a base64 data-URL — no network dependency, renders reliably.
+const pinSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="44" viewBox="0 0 32 44"><path d="M16 2C8 2 2 8 2 16c0 10 14 26 14 26s14-16 14-26C30 8 24 2 16 2z" fill="#cd5c5c" stroke="#ffffff" stroke-width="2"/><circle cx="16" cy="16" r="5" fill="#ffffff"/></svg>`;
 const customPinIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
+  iconUrl: `data:image/svg+xml;base64,${btoa(pinSvg)}`,
+  iconSize: [32, 44],
+  iconAnchor: [16, 42],
+  popupAnchor: [0, -38],
 });
 
 const activePersonIcon = L.divIcon({
@@ -40,14 +40,38 @@ const activePersonIcon = L.divIcon({
 function FitBounds({ positions }) {
   const map = useMap();
   useEffect(() => {
-    if (positions.length >= 2) {
-      const bounds = L.latLngBounds(positions);
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 19 });
-    } else if (positions.length === 1) {
-      map.setView(positions[0], 19);
+    const valid = (positions || []).filter(
+      (p) => Array.isArray(p) && p.length === 2
+        && typeof p[0] === 'number' && !Number.isNaN(p[0])
+        && typeof p[1] === 'number' && !Number.isNaN(p[1])
+    );
+    if (valid.length >= 2) {
+      map.fitBounds(L.latLngBounds(valid), { padding: [50, 50], maxZoom: 19 });
+    } else if (valid.length === 1) {
+      map.setView(valid[0], 19);
     }
   }, [map, positions]);
   return null;
+}
+
+function isValidLatLng(pos) {
+  return Array.isArray(pos)
+    && pos.length === 2
+    && typeof pos[0] === 'number' && !Number.isNaN(pos[0])
+    && typeof pos[1] === 'number' && !Number.isNaN(pos[1]);
+}
+
+// Haversine distance in meters.
+function distanceMeters(a, b) {
+  if (!isValidLatLng(a) || !isValidLatLng(b)) return Infinity;
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 // Builds the full route polyline positions using GPS trails from edges where available
@@ -55,38 +79,31 @@ function buildRoutePositions(map, routeNodeIds) {
   if (!routeNodeIds || routeNodeIds.length < 2) return [];
 
   const positions = [];
+  const push = (pos) => {
+    if (isValidLatLng(pos)) positions.push(pos);
+  };
+
   for (let i = 0; i < routeNodeIds.length - 1; i++) {
     const fromId = routeNodeIds[i];
     const toId = routeNodeIds[i + 1];
 
-    // Find the edge between these two nodes
     const edge = (map.edges || []).find(e =>
       (e.from === fromId && e.to === toId) ||
       (e.from === toId && e.to === fromId)
     );
 
     if (edge?.gpsTrail?.length > 1) {
-      // Use the recorded GPS trail for this segment
-      const trail = edge.from === fromId ? edge.gpsTrail : [...edge.gpsTrail].reverse();
-      // Avoid duplicating the connecting point between segments
-      if (positions.length > 0) {
-        positions.push(...trail.slice(1));
-      } else {
-        positions.push(...trail);
-      }
+      const trail = (edge.from === fromId ? edge.gpsTrail : [...edge.gpsTrail].reverse())
+        .filter(isValidLatLng);
+      const toAppend = positions.length > 0 ? trail.slice(1) : trail;
+      toAppend.forEach(push);
     } else {
-      // Fallback: straight line between the two nodes using their real lat/lng
       const fromNode = getNode(map, fromId);
       const toNode = getNode(map, toId);
-      if (fromNode && toNode) {
-        const fromPos = getNodeLatLng(fromNode);
-        const toPos = getNodeLatLng(toNode);
-        if (positions.length > 0) {
-          positions.push(toPos);
-        } else {
-          positions.push(fromPos, toPos);
-        }
-      }
+      const fromPos = fromNode ? getNodeLatLng(fromNode) : null;
+      const toPos = toNode ? getNodeLatLng(toNode) : null;
+      if (positions.length === 0) push(fromPos);
+      push(toPos);
     }
   }
   return positions;
@@ -94,8 +111,9 @@ function buildRoutePositions(map, routeNodeIds) {
 
 // Gets the real lat/lng from a node, using stored lat/lng directly
 function getNodeLatLng(node) {
-  if (node.lat != null && node.lng != null) {
-    return [node.lat, node.lng];
+  if (node && node.lat != null && node.lng != null) {
+    const pos = [Number(node.lat), Number(node.lng)];
+    return isValidLatLng(pos) ? pos : null;
   }
   return null;
 }
@@ -103,10 +121,15 @@ function getNodeLatLng(node) {
 export default function MapNavigationPage() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { state, currentVisitor, setCurrentVisitor } = useSinarms();
+  const { state, currentVisitor, setCurrentVisitor, moveVisitor, isReady } = useSinarms();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [livePosition, setLivePosition] = useState(null);
+  const [simulatedPosition, setSimulatedPosition] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
   const watchIdRef = useRef(null);
+  const simulationTimerRef = useRef(null);
+  const lastAdvancedNodeRef = useRef(null);
+  const advanceInFlightRef = useRef(false);
 
   useEffect(() => {
     const visitorIdFromRoute = routerLocation.state?.visitorId;
@@ -129,6 +152,88 @@ export default function MapNavigationPage() {
     };
   }, []);
 
+  // Snap the live/simulated position to the next route node and advance the
+  // backend's currentNodeId when within 8 m — that keeps the step list in sync.
+  const SNAP_RADIUS_M = 8;
+  useEffect(() => {
+    if (!currentVisitor?.id) return;
+    const probe = simulatedPosition || livePosition;
+    if (!isValidLatLng(probe)) return;
+    const mapObj = getLocationMap(state, currentVisitor.locationId);
+    const routeIds = currentVisitor.routeNodeIds || [];
+    if (!mapObj || routeIds.length < 2) return;
+
+    const currentIdx = routeIds.indexOf(currentVisitor.currentNodeId);
+    // Look only at nodes ahead of the current one.
+    for (let i = currentIdx + 1; i < routeIds.length; i++) {
+      const nodeId = routeIds[i];
+      if (nodeId === lastAdvancedNodeRef.current) continue;
+      const node = getNode(mapObj, nodeId);
+      const pos = node ? getNodeLatLng(node) : null;
+      if (!isValidLatLng(pos)) continue;
+      if (distanceMeters(probe, pos) <= SNAP_RADIUS_M) {
+        if (advanceInFlightRef.current) break;
+        advanceInFlightRef.current = true;
+        lastAdvancedNodeRef.current = nodeId;
+        moveVisitor(currentVisitor.id, nodeId, 'gps')
+          .catch(() => { lastAdvancedNodeRef.current = null; })
+          .finally(() => { advanceInFlightRef.current = false; });
+        break;
+      }
+    }
+  }, [simulatedPosition, livePosition, currentVisitor?.id, currentVisitor?.currentNodeId, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state, moveVisitor]);
+
+  // Reset snap guard whenever the route changes (e.g. reroute / switch location).
+  useEffect(() => {
+    lastAdvancedNodeRef.current = null;
+  }, [currentVisitor?.destinationNodeId, currentVisitor?.locationId]);
+
+  // Indoor-demo walk: animates the blue dot along the polyline so the full
+  // flow can be shown without real GPS. Stops automatically at the destination.
+  useEffect(() => {
+    if (!isSimulating) {
+      if (simulationTimerRef.current) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+      }
+      setSimulatedPosition(null);
+      return;
+    }
+    if (!currentVisitor?.id) return;
+    const mapObj = getLocationMap(state, currentVisitor.locationId);
+    const positions = buildRoutePositions(mapObj, currentVisitor.routeNodeIds);
+    if (positions.length < 2) {
+      setIsSimulating(false);
+      return;
+    }
+    let i = 0;
+    setSimulatedPosition(positions[0]);
+    simulationTimerRef.current = setInterval(() => {
+      i += 1;
+      if (i >= positions.length) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+        setIsSimulating(false);
+        return;
+      }
+      setSimulatedPosition(positions[i]);
+    }, 700);
+    return () => {
+      if (simulationTimerRef.current) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+      }
+    };
+  }, [isSimulating, currentVisitor?.id, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state]);
+
+  if (!isReady) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-80px)] text-slate-500 dark:text-slate-400 text-sm">
+        Loading your route...
+      </div>
+    );
+  }
+
   if (!currentVisitor) {
     return <Navigate to="/visit" replace />;
   }
@@ -141,30 +246,49 @@ export default function MapNavigationPage() {
   const destinationNode = getNode(map, currentVisitor.destinationNodeId);
 
   const currentNodePos = currentNode ? getNodeLatLng(currentNode) : null;
-  const destinationNodePos = destinationNode ? getNodeLatLng(destinationNode) : null;
+  // Fall back to the final node in the route if destinationNodeId itself didn't resolve.
+  const routeFallbackNode = (() => {
+    const ids = currentVisitor.routeNodeIds || [];
+    for (let i = ids.length - 1; i >= 0; i--) {
+      const n = getNode(map, ids[i]);
+      if (n && getNodeLatLng(n)) return n;
+    }
+    return null;
+  })();
+  const destinationNodePos = destinationNode
+    ? getNodeLatLng(destinationNode)
+    : (routeFallbackNode ? getNodeLatLng(routeFallbackNode) : null);
 
-  // Use live GPS position, fallback to current node position, fallback to location address
+  // Prefer the building's node/destination so the map opens on the site, not on the
+  // visitor's outdoor GPS. livePosition is used only as a "you are here" marker.
   const defaultCenter = (() => {
-    if (livePosition) return livePosition;
-    if (currentNodePos) return currentNodePos;
+    if (isValidLatLng(currentNodePos)) return currentNodePos;
+    if (isValidLatLng(destinationNodePos)) return destinationNodePos;
     if (location?.address) {
       const parts = location.address.split(',').map(s => parseFloat(s.trim()));
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) return parts;
     }
-    return [-1.9443, 30.0621];
+    return [-1.99585, 30.04020];
   })();
 
-  const visitorPosition = livePosition || currentNodePos || defaultCenter;
+  // Priority: simulated walk > real GPS > current node (server) > map default
+  const visitorPositionCandidate = simulatedPosition || livePosition || currentNodePos || defaultCenter;
+  const visitorPosition = isValidLatLng(visitorPositionCandidate) ? visitorPositionCandidate : defaultCenter;
 
   // Build route using real GPS trails from edges
   const routePositions = buildRoutePositions(map, currentVisitor.routeNodeIds);
 
-  // All positions to fit bounds (route + current + destination)
-  const allPositions = [
+  // Fit only to the building's route/nodes — never include outdoor GPS (livePosition),
+  // otherwise Leaflet zooms out to fit the user's real-world location and the building.
+  const indoorPositions = [
     ...routePositions,
-    visitorPosition,
-    ...(destinationNodePos ? [destinationNodePos] : []),
-  ].filter(Boolean);
+    ...(isValidLatLng(currentNodePos) ? [currentNodePos] : []),
+    ...(isValidLatLng(destinationNodePos) ? [destinationNodePos] : []),
+  ].filter(isValidLatLng);
+
+  const allPositions = indoorPositions.length
+    ? indoorPositions
+    : [defaultCenter].filter(isValidLatLng);
 
   // Build live steps from route data
   const currentIndex = (currentVisitor.routeNodeIds || []).indexOf(currentVisitor.currentNodeId);
@@ -196,19 +320,33 @@ export default function MapNavigationPage() {
       })
     : [];
 
-  const destinationLabel = destinationNode?.label || 'Destination';
+  const destinationLabel = destinationNode?.label || routeFallbackNode?.label || 'Destination';
 
   return (
     <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden relative">
 
       {/* Map Area */}
       <div className={`flex-1 relative glass-card overflow-hidden rounded-2xl border-4 border-slate-50 dark:border-slate-800 shadow-xl mb-4 bg-slate-100/50 dark:bg-slate-900 z-0 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[500] rounded-none border-0 mb-0' : ''}`}>
-        <button
-          onClick={() => setIsFullscreen(!isFullscreen)}
-          className="absolute top-4 right-4 z-[400] bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
-        >
-          {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
-        </button>
+        <div className="absolute top-4 right-4 z-[650] flex gap-2">
+          <button
+            onClick={() => setIsSimulating((prev) => !prev)}
+            aria-label={isSimulating ? 'Stop simulated walk' : 'Start simulated walk'}
+            title={isSimulating ? 'Stop simulated walk' : 'Simulate walking the route (demo)'}
+            className={`p-2.5 rounded-xl shadow-lg border transition-colors ${
+              isSimulating
+                ? 'bg-[var(--color-brand-terracotta)] dark:bg-red-500 border-transparent text-white'
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
+            }`}
+          >
+            {isSimulating ? <Pause size={20} /> : <Play size={20} />}
+          </button>
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
+          >
+            {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+          </button>
+        </div>
 
         <MapContainer
           center={defaultCenter}
@@ -238,7 +376,7 @@ export default function MapNavigationPage() {
             const node = getNode(map, nodeId);
             if (!node || nodeId === currentVisitor.currentNodeId || nodeId === currentVisitor.destinationNodeId) return null;
             const pos = getNodeLatLng(node);
-            if (!pos) return null;
+            if (!isValidLatLng(pos)) return null;
             return (
               <CircleMarker
                 key={nodeId}
@@ -252,14 +390,16 @@ export default function MapNavigationPage() {
           })}
 
           {/* Live Visitor Position */}
-          <Marker position={visitorPosition} icon={activePersonIcon}>
-            <Popup>
-              <div className="text-center font-bold">You are here</div>
-            </Popup>
-          </Marker>
+          {isValidLatLng(visitorPosition) && (
+            <Marker position={visitorPosition} icon={activePersonIcon}>
+              <Popup>
+                <div className="text-center font-bold">You are here</div>
+              </Popup>
+            </Marker>
+          )}
 
           {/* Destination marker */}
-          {destinationNodePos && (
+          {isValidLatLng(destinationNodePos) && (
             <Marker position={destinationNodePos} icon={customPinIcon}>
               <Popup>
                 <div className="text-center font-bold text-red-600">{destinationLabel}</div>
@@ -270,7 +410,7 @@ export default function MapNavigationPage() {
       </div>
 
       {/* Step by Step Navigation Drawer */}
-      <div className="h-64 bg-white dark:bg-[#0b101e] border-t border-slate-200 dark:border-slate-800 shrink-0 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] -mx-6 px-6 pt-6 pb-24 overflow-y-auto">
+      <div className={`h-64 bg-white dark:bg-[#0b101e] border-t border-slate-200 dark:border-slate-800 shrink-0 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] -mx-6 px-6 pt-6 pb-24 overflow-y-auto ${isFullscreen ? 'hidden' : ''}`}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <Navigation2 size={20} className="text-[var(--color-brand-terracotta)] dark:text-red-500" />
@@ -309,7 +449,10 @@ export default function MapNavigationPage() {
       </div>
 
       {/* Slide-Up Chat Component */}
-      <AIChatbot />
+      <AIChatbot
+        organizationId={currentVisitor?.organizationId}
+        locationId={currentVisitor?.locationId}
+      />
     </div>
   );
 }

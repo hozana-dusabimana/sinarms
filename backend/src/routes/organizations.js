@@ -6,6 +6,20 @@ const { generateLocationQr } = require('../services/domain');
 
 const router = express.Router();
 
+const ORGANIZATION_UPDATABLE = ['name', 'description', 'contactEmail', 'contactPhone', 'address', 'logoUrl', 'status'];
+const LOCATION_UPDATABLE = ['name', 'address', 'floorCount', 'description', 'status', 'qrCodeToken', 'receptionistIds'];
+
+function pick(source, allowed) {
+  const result = {};
+  if (!source) return result;
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      result[key] = source[key];
+    }
+  }
+  return result;
+}
+
 router.get('/', requireAuth, requireRole(['admin']), async (req, res) => {
   const state = await getState();
   return res.json(state.organizations);
@@ -29,7 +43,7 @@ router.post('/', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'CREATE_ORGANIZATION',
       targetType: 'organization',
       targetId: organization.id,
@@ -45,11 +59,11 @@ router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     if (!organization) {
       return draft;
     }
-    Object.assign(organization, req.body || {});
+    Object.assign(organization, pick(req.body, ORGANIZATION_UPDATABLE));
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_ORGANIZATION',
       targetType: 'organization',
       targetId: organization.id,
@@ -73,7 +87,7 @@ router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'TOGGLE_ORGANIZATION',
       targetType: 'organization',
       targetId: organization.id,
@@ -127,7 +141,7 @@ router.post('/:id/locations', requireAuth, requireRole(['admin']), async (req, r
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'CREATE_LOCATION',
       targetType: 'location',
       targetId: location.id,
@@ -143,11 +157,11 @@ router.put('/locations/:id', requireAuth, requireRole(['admin']), async (req, re
     if (!location) {
       return draft;
     }
-    Object.assign(location, req.body || {});
+    Object.assign(location, pick(req.body, LOCATION_UPDATABLE));
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'UPDATE_LOCATION',
       targetType: 'location',
       targetId: location.id,
@@ -171,7 +185,7 @@ router.delete('/locations/:id', requireAuth, requireRole(['admin']), async (req,
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
-      ipAddress: '127.0.0.1',
+      ipAddress: req.ip,
       actionType: 'TOGGLE_LOCATION',
       targetType: 'location',
       targetId: location.id,

@@ -350,6 +350,25 @@ export function SinarmsProvider({ children }) {
     return moveVisitor(visitorId, null, 'wifi');
   }
 
+  async function rerouteVisitor(visitorId, { destinationNodeId, locationId } = {}) {
+    if (!visitorId || !destinationNodeId) return null;
+    const visitor = await request(`/api/visitors/${visitorId}/reroute`, {
+      method: 'post',
+      data: { destinationNodeId, locationId },
+    });
+
+    setState((current) => ({
+      ...current,
+      visitors: upsertById(current.visitors, visitor),
+    }));
+
+    if (currentUser) {
+      await loadStaffBootstrap();
+    }
+
+    return visitor;
+  }
+
   async function notifyDepartment(visitorId) {
     const visitor = await request(`/api/visitors/${visitorId}/notify-dept`, {
       method: 'post',
@@ -700,8 +719,23 @@ export function SinarmsProvider({ children }) {
       data: payload,
     });
 
+    const resolvedLocationId = data.locationId || payload.locationId;
+    const targetMap = getLocationMap(state, resolvedLocationId);
+    const suggestedNodeId = data.destinationNodeId || data.alternatives?.[0]?.nodeId || null;
+    const suggestedNode = suggestedNodeId ? getNode(targetMap, suggestedNodeId) : null;
+
+    const navExtras = {
+      destinationNodeId: suggestedNodeId,
+      destinationLabel: suggestedNode?.label || null,
+      locationId: resolvedLocationId,
+      locationName: data.locationName || null,
+      crossLocation: Boolean(data.crossLocation) && resolvedLocationId !== payload.locationId,
+      status: data.status || null,
+      alternatives: data.alternatives || [],
+    };
+
     if (data.answer) {
-      return data;
+      return { ...data, ...navExtras };
     }
 
     if (data.fallback) {
@@ -712,23 +746,22 @@ export function SinarmsProvider({ children }) {
       };
     }
 
-    const map = getLocationMap(state, payload.locationId);
     if (data.status === 'confirm' && data.alternatives?.length) {
       return {
         answer: `Did you mean ${data.alternatives.map((option) => option.label).join(' or ')}?`,
         confidence: data.confidence || 0,
         type: 'navigation',
+        ...navExtras,
       };
     }
 
-    const destinationNodeId = data.destinationNodeId || data.alternatives?.[0]?.nodeId;
-    const destinationNode = destinationNodeId ? getNode(map, destinationNodeId) : null;
     return {
-      answer: destinationNode
-        ? `Head toward ${destinationNode.label}. Follow the highlighted route on the map.`
+      answer: suggestedNode
+        ? `Head toward ${suggestedNode.label}. Follow the highlighted route on the map.`
         : 'I am not sure about that. Please ask at the Reception desk.',
       confidence: data.confidence || 0,
       type: 'navigation',
+      ...navExtras,
     };
   }
 
@@ -750,6 +783,7 @@ export function SinarmsProvider({ children }) {
     registerVisitor,
     setCurrentVisitor,
     moveVisitor,
+    rerouteVisitor,
     sendHeartbeat,
     notifyDepartment,
     checkoutVisitor,

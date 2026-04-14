@@ -40,6 +40,47 @@ const receptionistPermissions = {
   viewAuditLog: false,
 };
 
+// Converts (x%, y%) layout to real lat/lng around a building footprint.
+// The x/y values in nodes are percentages (0-100) of a rectangular site;
+// origin.widthM/heightM map that rectangle onto meters on the ground,
+// so each node gets a realistic lat/lng for Leaflet/OSM.
+function attachGeo(mapDef, origin) {
+  const { baseLat, baseLng, widthM, heightM } = origin;
+  const mPerDegLat = 110574;
+  const mPerDegLng = 111320 * Math.cos((baseLat * Math.PI) / 180);
+
+  function toLatLng(x, y) {
+    const dxM = ((x - 50) / 100) * widthM;
+    const dyM = ((50 - y) / 100) * heightM; // screen y grows downward; north = lower y
+    return {
+      lat: baseLat + dyM / mPerDegLat,
+      lng: baseLng + dxM / mPerDegLng,
+    };
+  }
+
+  const nodes = mapDef.nodes.map((node) => {
+    const { lat, lng } = toLatLng(node.x, node.y);
+    return { ...node, lat, lng };
+  });
+
+  const nodeById = Object.fromEntries(nodes.map((n) => [n.id, n]));
+
+  const edges = mapDef.edges.map((edge) => {
+    const from = nodeById[edge.from];
+    const to = nodeById[edge.to];
+    if (!from || !to) return edge;
+    return {
+      ...edge,
+      gpsTrail: [
+        [from.lat, from.lng],
+        [to.lat, to.lng],
+      ],
+    };
+  });
+
+  return { ...mapDef, origin, nodes, edges };
+}
+
 function createSeedState() {
   const orgRuliba = 'org-ruliba';
   const locHq = 'loc-ruliba-hq';
@@ -253,7 +294,7 @@ function createSeedState() {
     ],
     notifications: [],
     maps: {
-      [locHq]: {
+      [locHq]: attachGeo({
         floorplanImage: null,
         nodes: [
           { id: 'entrance', label: 'Main Entrance', aliases: ['entrance', 'reception entrance', 'main gate'], type: 'checkpoint', zone: 'public', x: 8, y: 58, floor: 1 },
@@ -281,8 +322,8 @@ function createSeedState() {
           { id: 'edge-10', from: 'finance-office', to: 'exit', distanceM: 12, direction: 'straight', directionHint: 'Head straight to the exit gate.', isAccessible: true },
           { id: 'edge-11', from: 'meeting-room', to: 'exit', distanceM: 14, direction: 'straight', directionHint: 'Follow the corridor to the exit gate.', isAccessible: true },
         ],
-      },
-      [locFactory]: {
+      }, { baseLat: -1.99585, baseLng: 30.04020, widthM: 80, heightM: 60 }),
+      [locFactory]: attachGeo({
         floorplanImage: null,
         nodes: [
           { id: 'entrance', label: 'Main Entrance', aliases: ['factory entrance', 'main gate', 'entry'], type: 'checkpoint', zone: 'public', x: 8, y: 58, floor: 1 },
@@ -328,7 +369,7 @@ function createSeedState() {
           { id: 'f-edge-19', from: 'chief-maintenance-office', to: 'exit', distanceM: 10, direction: 'straight', directionHint: 'Continue straight to the Factory Exit.', isAccessible: true },
           { id: 'f-edge-20', from: 'sales-office', to: 'exit', distanceM: 11, direction: 'straight', directionHint: 'Follow the corridor to the Factory Exit.', isAccessible: true },
         ],
-      },
+      }, { baseLat: -1.99720, baseLng: 30.04180, widthM: 140, heightM: 110 }),
     },
   };
 }

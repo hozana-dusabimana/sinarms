@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "Bash(npx jest:*)",
+      "Bash(python -c \"import fastapi, transformers, sentence_transformers, networkx, torch; print\\('deps OK'\\)\")",
+      "Bash(node_modules/.bin/jest.CMD --testPathPattern=api.ai)",
+      "Bash(node_modules/.bin/jest.CMD --testPathPatterns=api.ai --runInBand)",
+      "Bash(sh -c 'while true; do tail -c 200 C:/Users/Hozana/AppData/Local/Temp/claude/d--XAMPP-htdocs-sinarms/bef7fc47-fa1c-4d27-af66-8cef63408ff3/tasks/b5o0kakj4.output 2>/dev/null | grep -E --line-buffered \"Tests:|PASS|FAIL|passed|failed\" | head -1; if ! ps -p $\\(cat /tmp/jest_pid 2>/dev/null\\) >/dev/null 2>&1; then echo \"__DONE__\"; break; fi; sleep 2; done')",
+      "Bash(node -e \"console.log\\('node works'\\)\")",
+      "Bash(node -e \"const { createSeedState } = require\\('./src/data/seed'\\); const s = createSeedState\\(\\); require\\('fs'\\).writeFileSync\\('../ai/data/_seed_maps.json', JSON.stringify\\({ maps: s.maps }, null, 2\\)\\); console.log\\('wrote maps for', Object.keys\\(s.maps\\).join\\(','\\)\\)\")",
+      "Bash(awk 'NR%1000==0 {print NR\": \"$0}' intent_dataset.jsonl)",
+      "Bash(curl -sL --max-time 90 -o d:/XAMPP/htdocs/sinarms/ai/data/external/quora_duplicate_questions.tsv \"https://qim.fs.quoracdn.net/quora_duplicate_questions.tsv\")",
+      "Bash(python -m training.generate_dataset --seed-file data/_seed_maps.json --target-size 8000 --variants 2)",
+      "Bash(awk 'length > 90' intent_dataset.jsonl)",
+      "Bash(awk 'NR%1500==0' intent_dataset.jsonl)",
+      "Bash(python -c ':*)",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(python -m venv venv)",
+      "Bash(./venv/Scripts/python.exe -m pip install --upgrade pip)",
+      "Bash(./venv/Scripts/python.exe -m pip install -r requirements.txt)",
+      "Bash(AI_ENGINE_DISABLED=1 npx jest --forceExit)"
+    ]
+  }
+}

@@ -1,3 +1,4 @@
+require('dotenv').config();
 const path = require('path');
 
 function buildDbConfig() {
@@ -23,7 +24,18 @@ function buildDbConfig() {
   };
 }
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET must be set in production.');
+}
+
+if (!process.env.JWT_SECRET) {
+  console.warn('[config] JWT_SECRET not set — using development fallback.');
+}
+
 module.exports = {
+  isProduction,
   port: Number(process.env.PORT || 4000),
   jwtSecret: process.env.JWT_SECRET || 'sinarms-dev-secret',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',

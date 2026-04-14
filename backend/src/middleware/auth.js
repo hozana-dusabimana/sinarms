@@ -11,7 +11,7 @@ function getToken(req) {
   return req.cookies && req.cookies.token ? req.cookies.token : null;
 }
 
-async function attachUser(req, _res, next) {
+async function attachUser(req, res, next) {
   const token = getToken(req);
   if (!token) {
     req.user = null;
@@ -22,9 +22,15 @@ async function attachUser(req, _res, next) {
     const payload = jwt.verify(token, jwtSecret);
     const state = await getState();
     const user = state.users.find((entry) => entry.id === payload.userId && entry.status === 'active');
+    if (!user) {
+      // Token valid but user no longer exists/active — drop the stale cookie.
+      res.clearCookie('token');
+    }
     req.user = user || null;
     req.auth = payload;
   } catch (_error) {
+    // Token failed verification (signature/expiry) — drop it so the client can cleanly re-login.
+    res.clearCookie('token');
     req.user = null;
     req.auth = null;
   }

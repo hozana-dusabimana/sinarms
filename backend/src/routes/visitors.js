@@ -6,6 +6,7 @@ const {
   checkoutVisitor,
   notifyDepartment,
   registerVisitor,
+  rerouteVisitor,
   scopeVisitors,
   updateVisitorPosition,
 } = require('../services/domain');
@@ -69,6 +70,26 @@ router.post('/:id/position', async (req, res) => {
 
   if (!visitor) {
     return res.status(404).json({ message: 'Visitor not found or not active.' });
+  }
+
+  return res.json(visitor);
+});
+
+router.post('/:id/reroute', async (req, res) => {
+  const destinationNodeId = req.body && req.body.destinationNodeId;
+  if (!destinationNodeId) {
+    return res.status(400).json({ message: 'destinationNodeId is required.' });
+  }
+
+  const visitor = await rerouteVisitor({
+    actorUser: req.user || null,
+    visitorId: req.params.id,
+    destinationNodeId,
+    locationId: req.body && req.body.locationId,
+  });
+
+  if (!visitor) {
+    return res.status(404).json({ message: 'Visitor not found or destination unavailable.' });
   }
 
   return res.json(visitor);

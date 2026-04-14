@@ -1,9 +1,31 @@
 const http = require('http');
 const { Server } = require('socket.io');
 const { port, corsOrigin } = require('./config');
-const { initStore } = require('./data/store');
+const { initStore, getState, mutateState } = require('./data/store');
+const { refreshAlerts } = require('./services/engine');
 const { createApp } = require('./app');
-const { setIO } = require('./services/realtime');
+const { setIO, emit } = require('./services/realtime');
+
+const ALERT_REFRESH_INTERVAL_MS = 60 * 1000;
+
+function alertsChanged(before, after) {
+  if (before.length !== after.length) return true;
+  return JSON.stringify(before) !== JSON.stringify(after);
+}
+
+async function runAlertRefresh() {
+  try {
+    const currentState = await getState();
+    const prospective = refreshAlerts(currentState);
+    if (!alertsChanged(currentState.alerts || [], prospective.alerts || [])) {
+      return;
+    }
+    await mutateState((draft) => refreshAlerts(draft));
+    emit('alerts:refreshed', { at: new Date().toISOString() });
+  } catch (error) {
+    console.error('[alerts] refresh failed', error);
+  }
+}
 
 async function startServer() {
   await initStore();
@@ -25,6 +47,8 @@ async function startServer() {
   server.listen(port, () => {
     console.log(`SINARMS backend listening on http://localhost:${port}`);
   });
+
+  setInterval(runAlertRefresh, ALERT_REFRESH_INTERVAL_MS).unref();
 
   return server;
 }

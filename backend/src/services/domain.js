@@ -15,6 +15,8 @@ const {
   queryFaq,
 } = require('./engine');
 const { emit } = require('./realtime');
+const aiClient = require('./aiClient');
+const openrouterClient = require('./openrouterClient');
 
 function publicUser(user) {
   if (!user) {
@@ -34,11 +36,11 @@ function publicUser(user) {
   };
 }
 
-function getActor(sessionUser) {
+function getActor(sessionUser, ipAddress) {
   return {
     userId: sessionUser ? sessionUser.id : 'system',
     actorName: sessionUser ? sessionUser.name : 'System',
-    ipAddress: '127.0.0.1',
+    ipAddress: ipAddress || 'system',
   };
 }
 
@@ -185,6 +187,222 @@ function resolveDestinationForLocation(state, locationId, destinationText) {
   return classifyDestination(map, destinationText);
 }
 
+function isValidNodeForLocation(state, locationId, nodeId) {
+  if (!nodeId) {
+    return false;
+  }
+  const map = getLocationMap(state, locationId);
+  return !!getNode(map, nodeId);
+}
+
+async function resolveDestinationWithAi(state, locationId, destinationText, language) {
+  const aiResult = await aiClient.classifyIntent({
+    text: destinationText,
+    locationId,
+    language,
+  });
+
+  if (aiResult && typeof aiResult === 'object') {
+    const alternatives = Array.isArray(aiResult.alternatives)
+      ? aiResult.alternatives.filter((alt) => isValidNodeForLocation(state, locationId, alt.nodeId))
+      : [];
+
+    if (aiResult.status === 'resolved' && isValidNodeForLocation(state, locationId, aiResult.destinationNodeId)) {
+      return {
+        ...aiResult,
+        alternatives,
+        source: 'ai-engine',
+      };
+    }
+
+    if (aiResult.status === 'confirm' && alternatives.length) {
+      return {
+        ...aiResult,
+        alternatives,
+        source: 'ai-engine',
+      };
+    }
+  }
+
+  return {
+    ...resolveDestinationForLocation(state, locationId, destinationText),
+    source: 'fallback',
+  };
+}
+
+function formatNavAnswer(map, nav) {
+  if (!nav) return null;
+
+  if (nav.status === 'resolved' && nav.destinationNodeId) {
+    const node = getNode(map, nav.destinationNodeId);
+    if (node) {
+      return `Head toward ${node.label}. Follow the highlighted route on the map.`;
+    }
+  }
+
+  if (nav.status === 'confirm' && Array.isArray(nav.alternatives) && nav.alternatives.length) {
+    const labels = nav.alternatives.map((alt) => alt.label).filter(Boolean);
+    if (labels.length === 1) return `Did you mean ${labels[0]}?`;
+    if (labels.length > 1) return `Did you mean ${labels.slice(0, -1).join(', ')} or ${labels.slice(-1)[0]}?`;
+  }
+
+  return null;
+}
+
+function searchAllLocations(state, trimmed) {
+  let best = null;
+  for (const location of state.locations || []) {
+    const map = getLocationMap(state, location.id);
+    const result = classifyDestination(map, trimmed);
+    const conf = Number(result.confidence || 0);
+    if (!best || conf > Number(best.confidence || 0)) {
+      best = { ...result, locationId: location.id, locationName: location.name };
+    }
+  }
+  return best;
+}
+
+function decorateCrossLocation(state, aiResult) {
+  if (!aiResult || !aiResult.locationId) return aiResult;
+  const loc = (state.locations || []).find((entry) => entry.id === aiResult.locationId);
+  if (!loc) return aiResult;
+  return { ...aiResult, locationName: aiResult.locationName || loc.name };
+}
+
+async function polishChatbotResult(state, query, result, locationId) {
+  // Give the LLM the list of real destinations so it can suggest alternatives
+  // without hallucinating. It must pick names from this list, nothing else.
+  const map = locationId ? getLocationMap(state, locationId) : null;
+  const availableDestinations = map
+    ? (map.nodes || [])
+        .filter((n) => n && n.label && !['exit', 'checkpoint'].includes(n.type))
+        .map((n) => n.label)
+    : [];
+
+  const context = {
+    destinationLabel: result && result.destinationLabel,
+    locationName: result && result.locationName,
+    availableDestinations,
+  };
+  return openrouterClient.polishAnswer({ query, localAnswer: result, context });
+}
+
+async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
+  const aiResult = await aiClient.chatbot({ query, locationId, organizationId });
+  const aiUsable = aiResult && (
+    aiResult.answer
+    || (aiResult.status === 'resolved' && aiResult.destinationNodeId)
+    || (aiResult.status === 'confirm' && Array.isArray(aiResult.alternatives) && aiResult.alternatives.length)
+    || aiResult.crossLocation
+  );
+  if (aiUsable) {
+    return { ...decorateCrossLocation(state, aiResult), source: 'ai-engine' };
+  }
+
+  const trimmed = String(query || '').trim();
+
+  if (!trimmed) {
+    return {
+      answer: 'Hi! Ask me something like "Where is the HR office?" or "How do I get to the restroom?"',
+      confidence: 1,
+      type: 'greeting',
+      source: 'fallback',
+    };
+  }
+
+  if (/^\s*(hi+|hello+|hey+|yo|bonjour|salut|muraho|mwaramutse|mwiriwe)\b/i.test(trimmed)) {
+    return {
+      answer: 'Hi! I can help you find offices and common areas on this site. Try "Where is the HR office?" or "Where is the toilet?"',
+      confidence: 1,
+      type: 'greeting',
+      source: 'fallback',
+    };
+  }
+
+  if (/\b(thanks|thank you|merci|murakoze)\b/i.test(trimmed)) {
+    return {
+      answer: "You're welcome. Let me know if you need help finding another place.",
+      confidence: 1,
+      type: 'greeting',
+      source: 'fallback',
+    };
+  }
+
+  const map = getLocationMap(state, locationId);
+  const nav = resolveDestinationForLocation(state, locationId, trimmed);
+  const faqMatch = queryFaq(state, organizationId || null, trimmed);
+  const navAnswer = formatNavAnswer(map, nav);
+
+  // If nav resolved confidently, it beats FAQ (FAQ can match generic "where/is/the")
+  if (nav.status === 'resolved' && (nav.confidence || 0) >= 0.6 && navAnswer) {
+    return {
+      ...nav,
+      answer: navAnswer,
+      source: 'fallback',
+      type: 'navigation',
+    };
+  }
+
+  if (faqMatch.answer && (faqMatch.confidence || 0) >= 0.75) {
+    return { ...faqMatch, source: 'fallback', type: 'faq' };
+  }
+
+  if (navAnswer) {
+    return {
+      ...nav,
+      answer: navAnswer,
+      source: 'fallback',
+      type: 'navigation',
+    };
+  }
+
+  if (faqMatch.answer) {
+    return { ...faqMatch, source: 'fallback', type: 'faq' };
+  }
+
+  // Last resort: the destination may live in a different facility map. If
+  // another location has a confident match, offer to switch.
+  const crossLocation = searchAllLocations(state, trimmed);
+  if (
+    crossLocation
+    && crossLocation.locationId !== locationId
+    && crossLocation.status !== 'retry'
+    && (crossLocation.destinationNodeId || (crossLocation.alternatives || []).length)
+  ) {
+    const topId = crossLocation.destinationNodeId || (crossLocation.alternatives[0] || {}).nodeId;
+    const topLabel = (crossLocation.alternatives && crossLocation.alternatives[0] && crossLocation.alternatives[0].label)
+      || (topId && getNode(getLocationMap(state, crossLocation.locationId), topId) || {}).label
+      || 'that destination';
+    return {
+      ...crossLocation,
+      destinationNodeId: topId,
+      answer: `${topLabel} is in ${crossLocation.locationName}. Switch to that location?`,
+      type: 'navigation',
+      crossLocation: true,
+      source: 'fallback',
+    };
+  }
+
+  const suggestions = (map.nodes || [])
+    .filter((node) => node.type !== 'exit' && node.type !== 'checkpoint' && node.zone !== 'restricted')
+    .slice(0, 5)
+    .map((node) => node.label);
+
+  return {
+    answer: suggestions.length
+      ? `I am not sure what you mean. Try asking about ${suggestions.join(', ')}, or ask at the Reception desk.`
+      : 'I am not sure. Please ask at the Reception desk.',
+    confidence: 0.31,
+    type: 'faq',
+    source: 'fallback',
+  };
+}
+
+async function chatbotRespond(state, payload) {
+  const raw = await chatbotRespondRaw(state, payload);
+  return polishChatbotResult(state, payload && payload.query, raw, payload && payload.locationId);
+}
+
 function buildVisitorResponse(state, visitorId) {
   const visitor = state.visitors.find((entry) => entry.id === visitorId);
   if (!visitor) {
@@ -204,7 +422,12 @@ function buildVisitorResponse(state, visitorId) {
 
 async function registerVisitor({ actorUser, payload, source }) {
   const state = await getState();
-  const routeDecision = resolveDestinationForLocation(state, payload.locationId, payload.destinationText);
+  const routeDecision = await resolveDestinationWithAi(
+    state,
+    payload.locationId,
+    payload.destinationText,
+    payload.language,
+  );
 
   if (routeDecision.status !== 'resolved' && !payload.destinationNodeId) {
     return {
@@ -330,6 +553,65 @@ async function updateVisitorPosition({ actorUser, visitorId, nodeId, source }) {
     }
   }
 
+  return visitor;
+}
+
+async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locationId }) {
+  let updatedId = null;
+
+  const nextState = await mutateState((draft) => {
+    const visitor = draft.visitors.find((entry) => entry.id === visitorId);
+    if (!visitor || visitor.status !== 'active') {
+      return draft;
+    }
+
+    const targetLocationId = locationId || visitor.locationId;
+    const map = getLocationMap(draft, targetLocationId);
+    const destinationNode = getNode(map, destinationNodeId);
+    if (!destinationNode) {
+      return draft;
+    }
+
+    const route = calculateRoute(map, 'entrance', destinationNodeId);
+    const nowIso = new Date().toISOString();
+    const locationChanged = targetLocationId !== visitor.locationId;
+
+    visitor.locationId = targetLocationId;
+    visitor.destinationNodeId = destinationNodeId;
+    visitor.destinationText = destinationNode.label;
+    visitor.routeNodeIds = route.pathNodeIds;
+    visitor.routeSteps = route.steps;
+    visitor.currentNodeId = route.pathNodeIds[0] || 'entrance';
+    visitor.lastPositionUpdateAt = nowIso;
+    visitor.arrivedAt = null;
+
+    const startNode = getNode(map, visitor.currentNodeId);
+    draft.visitorPositions.unshift({
+      id: createId('pos'),
+      visitorId,
+      zoneId: visitor.currentNodeId,
+      nodeId: visitor.currentNodeId,
+      x: startNode ? startNode.x : 8,
+      y: startNode ? startNode.y : 58,
+      timestamp: nowIso,
+      source: 'chatbot',
+    });
+
+    updatedId = visitorId;
+    return addAudit(draft, actorUser, {
+      actionType: locationChanged ? 'REROUTE_LOCATION' : 'REROUTE_DESTINATION',
+      targetType: 'visitor',
+      targetId: visitorId,
+      details: locationChanged
+        ? `Rerouted ${visitor.name} to ${destinationNode.label} at ${targetLocationId}.`
+        : `Rerouted ${visitor.name} to ${destinationNode.label}.`,
+    });
+  });
+
+  const visitor = updatedId ? buildVisitorResponse(nextState, updatedId) : null;
+  if (visitor) {
+    emit('visitor:position', visitor);
+  }
   return visitor;
 }
 
@@ -598,6 +880,7 @@ module.exports = {
   authenticate,
   buildAnalytics,
   buildVisitorResponse,
+  chatbotRespond,
   checkoutVisitor,
   generateLocationQr,
   logout,
@@ -607,6 +890,8 @@ module.exports = {
   registerVisitor,
   resolveAlert,
   resolveDestinationForLocation,
+  resolveDestinationWithAi,
+  rerouteVisitor,
   scopeAlerts,
   scopeVisitors,
   updateVisitorPosition,
