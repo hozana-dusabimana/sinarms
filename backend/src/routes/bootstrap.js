@@ -43,7 +43,7 @@ router.get('/staff', requireAuth, async (req, res) => {
       users: isAdmin ? state.users.map(publicUser) : [],
       visitors: scopeVisitors(state, req.user, { includeHistory: isAdmin }),
       alerts: scopeAlerts(state, req.user),
-      faq: isAdmin ? state.faq : [],
+      faq: isAdmin || req.user.role === 'receptionist' ? state.faq : [],
       auditLog: isAdmin ? state.auditLog : [],
       notifications: state.notifications || [],
     },

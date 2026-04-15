@@ -86,6 +86,9 @@ function scopeVisitors(state, user, options = {}) {
 
     const sameOrg = visitor.organizationId === user.organizationId;
     const sameLocation = visitor.locationId === user.locationId;
+    if (options.allDays) {
+      return sameOrg && sameLocation;
+    }
     const sameDay = new Date(visitor.checkinTime).toDateString() === new Date().toDateString();
     return sameOrg && sameLocation && sameDay;
   });
@@ -388,6 +391,39 @@ async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
     .slice(0, 5)
     .map((node) => node.label);
 
+  // Last-chance LLM: if OpenRouter is configured, let it answer using the
+  // facility destinations and FAQ as grounded context. The prompt instructs
+  // the model to refuse rather than invent when the fact isn't present.
+  if (openrouterClient.isEnabled()) {
+    const location = getLocationById(state, locationId);
+    const availableDestinations = (map.nodes || [])
+      .filter((n) => n && n.label && !['exit', 'checkpoint'].includes(n.type))
+      .map((n) => n.label);
+    const faqPool = (state.faq || []).filter((entry) => {
+      if (!entry || !entry.answer) return false;
+      if (!organizationId || !entry.organizationId) return true;
+      return entry.organizationId === organizationId;
+    });
+
+    const llmAnswer = await openrouterClient.answerWithKnowledge({
+      query: trimmed,
+      context: {
+        locationName: location ? location.name : null,
+        availableDestinations,
+        faq: faqPool,
+      },
+    });
+
+    if (llmAnswer) {
+      return {
+        answer: llmAnswer,
+        confidence: 0.6,
+        type: 'faq',
+        source: 'llm-fallback',
+      };
+    }
+  }
+
   return {
     answer: suggestions.length
       ? `I am not sure what you mean. Try asking about ${suggestions.join(', ')}, or ask at the Reception desk.`
@@ -482,6 +518,15 @@ async function registerVisitor({ actorUser, payload, source }) {
       y: startNode ? startNode.y : 58,
       timestamp: nowIso,
       source: source === 'manual' ? 'manual' : 'qr',
+    });
+
+    draft.notifications.unshift({
+      id: createId('notify'),
+      type: source === 'manual' ? 'MANUAL_CHECKIN' : 'VISITOR_CHECKIN',
+      visitorId,
+      message: `${payload.name} checked in${payload.destinationText ? ` for ${payload.destinationText}` : ''}.`,
+      createdAt: nowIso,
+      createdBy: actorUser ? actorUser.id : 'system',
     });
 
     const withAudit = addAudit(draft, actorUser, {
@@ -843,6 +888,7 @@ async function upsertUser({ actorUser, payload, userId }) {
     });
   });
 
+  if (!responseUser) return null;
   return publicUser(nextState.users.find((entry) => entry.id === responseUser.id));
 }
 

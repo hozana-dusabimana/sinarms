@@ -30,6 +30,7 @@ import numpy as np
 from app.config import (
     CONFIDENCE_CONFIRM,
     CONFIDENCE_RESOLVE,
+    FINE_TUNED_BLEND_WEIGHT,
     INTENT_LABELS_FILE,
     INTENT_MODEL_DIR,
 )
@@ -224,9 +225,14 @@ def _wrap_scores(scored: List[Dict[str, Any]], map_graph: MapGraph) -> Dict[str,
     )
 
 
-def _classify_with_fine_tuned(text: str, map_graph: MapGraph) -> Optional[Dict[str, Any]]:
+def _fine_tuned_scores(text: str, map_graph: MapGraph) -> Dict[str, float]:
+    """Return per-node softmax probabilities from the fine-tuned classifier.
+
+    Returns an empty dict if the classifier is not loaded or none of its
+    trained labels survive in the current facility graph (map drift).
+    """
     if _ft_model is None or _ft_tokenizer is None or not _ft_label_map:
-        return None
+        return {}
 
     import torch  # noqa: WPS433
 
@@ -242,30 +248,27 @@ def _classify_with_fine_tuned(text: str, map_graph: MapGraph) -> Optional[Dict[s
         probs = torch.softmax(logits, dim=-1).cpu().numpy()
 
     node_ids_in_graph = {node["id"] for node in map_graph.nodes}
-    scored: List[Dict[str, Any]] = []
-    labels_map = _build_alias_cache(map_graph)["node_labels"]
+    scores: Dict[str, float] = {}
     for index, prob in enumerate(probs):
         node_id = _ft_label_map.get(int(index))
         if not node_id or node_id not in node_ids_in_graph:
             continue
-        scored.append(
-            {
-                "nodeId": node_id,
-                "label": labels_map.get(node_id, node_id),
-                "confidence": float(prob),
-            }
-        )
-    scored.sort(key=lambda entry: entry["confidence"], reverse=True)
-    return _wrap_scores(scored[:5], map_graph)
+        scores[node_id] = float(prob)
+    return scores
 
 
-def _classify_with_embeddings(text: str, map_graph: MapGraph) -> Dict[str, Any]:
+def _classify_with_embeddings(
+    text: str,
+    map_graph: MapGraph,
+    fine_tuned_scores: Optional[Dict[str, float]] = None,
+) -> Dict[str, Any]:
     cache = _build_alias_cache(map_graph)
     phrases = cache["phrases"]
     phrase_to_node = cache["phrase_to_node"]
     encoded = cache["embeddings"]
 
     scores: Dict[str, float] = {}
+    used_embeddings = False
 
     if encoded is not None and phrases:
         encoder = embeddings.get_encoder()
@@ -279,6 +282,7 @@ def _classify_with_embeddings(text: str, map_graph: MapGraph) -> Dict[str, Any]:
                 score = float((sim + 1.0) / 2.0)  # map cosine [-1,1] → [0,1]
                 if score > prev:
                     scores[node_id] = score
+            used_embeddings = True
 
     if not scores:
         # Dictionary fallback — guarantees the service is useful even without any ML
@@ -286,6 +290,16 @@ def _classify_with_embeddings(text: str, map_graph: MapGraph) -> Dict[str, Any]:
             score = _keyword_fallback_score(text, phrase)
             if score > scores.get(node_id, 0.0):
                 scores[node_id] = score
+
+    # Blend in the fine-tuned classifier as a supporting vote. Retrieval stays
+    # the authority so a stale classifier can't outvote the live facility graph.
+    if fine_tuned_scores and used_embeddings:
+        w = FINE_TUNED_BLEND_WEIGHT
+        blended: Dict[str, float] = {}
+        for node_id, retrieval_score in scores.items():
+            ft_score = fine_tuned_scores.get(node_id, 0.0)
+            blended[node_id] = (1.0 - w) * retrieval_score + w * ft_score
+        scores = blended
 
     labels_map = cache["node_labels"]
     scored = [
@@ -345,6 +359,41 @@ def _fuzzy_token_match(query_tokens: List[str], alias_tokens: List[str]) -> floa
     return matched / len([t for t in alias_tokens if len(t) >= 3])
 
 
+ACRONYM_EXPANSIONS = {
+    "hr": ["human resource", "human resources", "hr office", "hr manager"],
+    "md": ["managing director", "md office"],
+    "it": ["information technology", "it office"],
+    "ceo": ["chief executive officer"],
+    "cfo": ["chief financial officer"],
+    "pa": ["personal assistant"],
+}
+
+
+def _token_is_distinctive(token: str, map_graph: MapGraph) -> Optional[str]:
+    """Return the single node id whose alias/label tokens contain ``token``.
+
+    If the token appears in aliases of more than one node, returns None (we
+    cannot safely resolve). Used to short-circuit short queries like "hr"
+    that should match the one node that mentions that abbreviation.
+    """
+    if not token or len(token) < 2:
+        return None
+    matches: set = set()
+    for node in _candidate_nodes(map_graph):
+        label = node.get("label") or ""
+        candidates = [label] + list(node.get("aliases") or [])
+        for alias in candidates:
+            alias_tokens = set(_tokenize(alias))
+            if token in alias_tokens:
+                matches.add(node["id"])
+                break
+        if len(matches) > 1:
+            return None
+    if len(matches) == 1:
+        return next(iter(matches))
+    return None
+
+
 def _literal_alias_match(text: str, map_graph: MapGraph) -> Optional[Dict[str, Any]]:
     """Short-circuit: if the query literally (or near-literally) contains a
     node label or alias, treat that as a confident hit. Prevents a stale
@@ -357,6 +406,33 @@ def _literal_alias_match(text: str, map_graph: MapGraph) -> Optional[Dict[str, A
     exact_best_len = 0
     fuzzy_best = None
     fuzzy_best_score = 0.0
+
+    # Short-query acronym / token shortcut. If the user typed a very short
+    # query (one token, ≤ 4 chars) that uniquely identifies a node's alias
+    # tokens, resolve directly. Handles "hr", "md", "it", etc.
+    if len(query_tokens) == 1 and 2 <= len(query_tokens[0]) <= 4:
+        short = query_tokens[0]
+        expansions = ACRONYM_EXPANSIONS.get(short, [])
+        for node in _candidate_nodes(map_graph):
+            candidates = [node.get("label") or ""] + list(node.get("aliases") or [])
+            norm = [a.lower() for a in candidates if a]
+            if any(exp in n for exp in expansions for n in norm):
+                return _result(
+                    status="resolved",
+                    confidence=0.92,
+                    destination_node_id=node["id"],
+                    alternatives=[],
+                    message="Destination recognized (abbreviation).",
+                )
+        distinctive = _token_is_distinctive(short, map_graph)
+        if distinctive is not None:
+            return _result(
+                status="resolved",
+                confidence=0.9,
+                destination_node_id=distinctive,
+                alternatives=[],
+                message="Destination recognized (abbreviation).",
+            )
 
     for node in _candidate_nodes(map_graph):
         label = node.get("label") or ""
@@ -429,12 +505,11 @@ def classify(text: str, location_id: Optional[str] = None) -> Dict[str, Any]:
     if literal:
         return literal
 
+    ft_scores: Dict[str, float] = {}
     if _load_fine_tuned():
-        result = _classify_with_fine_tuned(text, map_graph)
-        if result and result["status"] in {"resolved", "confirm"}:
-            return result
+        ft_scores = _fine_tuned_scores(text, map_graph)
 
-    return _classify_with_embeddings(text, map_graph)
+    return _classify_with_embeddings(text, map_graph, fine_tuned_scores=ft_scores)
 
 
 def classify_across_locations(text: str) -> Dict[str, Any]:
@@ -457,7 +532,8 @@ def classify_across_locations(text: str) -> Dict[str, Any]:
 
     best: Optional[Dict[str, Any]] = None
     for location_id, map_graph in state.maps.items():
-        per_map = _classify_with_embeddings(text, map_graph)
+        literal = _literal_alias_match(text, map_graph)
+        per_map = literal if literal else _classify_with_embeddings(text, map_graph)
         top_conf = float(per_map.get("confidence") or 0.0)
         if best is None or top_conf > float(best.get("confidence") or 0.0):
             enriched = dict(per_map)

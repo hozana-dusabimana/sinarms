@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users } from 'lucide-react';
+import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -160,26 +160,86 @@ export default function DashboardPage() {
     return `${hours}h ago`;
   }
 
+  const stats = [
+    {
+      label: 'Active Visitors',
+      value: activeVisitors.length.toString(),
+      icon: <UserCheck className="w-6 h-6" />,
+      color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
+    },
+    {
+      label: 'Total Today',
+      value: (analytics?.totalVisitors ?? 0).toString(),
+      icon: <Users className="w-6 h-6" />,
+      color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
+    },
+    {
+      label: 'Active Alerts',
+      value: activeAlerts.length.toString(),
+      icon: <ShieldAlert className="w-6 h-6" />,
+      color: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400',
+      alert: activeAlerts.length > 0,
+    },
+    {
+      label: 'Avg Duration',
+      value: `${analytics?.averageDuration ?? 0}m`,
+      icon: <Activity className="w-6 h-6" />,
+      color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
+    },
+  ];
+
   return (
-    <div className="flex flex-col h-full space-y-6">
-      <div className="flex items-center justify-between mb-2">
+    <div className="flex flex-col h-full gap-6">
+      <div className="flex items-end justify-between mb-1 flex-wrap gap-4">
         <div>
           <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Live Operations</h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium">Head Office - Kigali • Active Shift</p>
+          <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">
+            {location?.name || 'Head Office'} • Active Shift • Real-time visitor tracking
+          </p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="hidden sm:flex items-center gap-2 bg-slate-200/50 dark:bg-slate-800/50 px-4 py-2 rounded-full border border-slate-300/50 dark:border-slate-700">
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 bg-white dark:bg-slate-800/60 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Live Sync</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Live Sync</span>
           </div>
-          <button 
+          <button
             onClick={() => setIsRegistrationModalOpen(true)}
-            className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2"
+            className="bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:opacity-95 text-white px-5 py-2.5 rounded-xl shadow-md shadow-red-500/20 transition-all font-bold flex items-center gap-2"
           >
             <Users size={18} />
             <span className="hidden sm:inline">Manual Registration</span>
           </button>
         </div>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, idx) => (
+          <div
+            key={idx}
+            className="glass-card p-5 relative overflow-hidden group hover:shadow-lg transition-shadow"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1 uppercase tracking-wider">
+                  {stat.label}
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">{stat.value}</p>
+                  {stat.alert && (
+                    <span className="flex h-2.5 w-2.5 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className={`p-2.5 rounded-xl ${stat.color} transition-transform group-hover:scale-110`}>
+                {stat.icon}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
@@ -423,15 +483,24 @@ export default function DashboardPage() {
           </div>
 
           <div className="glass-card p-5 hidden xl:block">
-            <h4 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-4">Quick Stats</h4>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                <p className="text-2xl font-black text-slate-900 dark:text-white">{analytics.totalVisitors}</p>
-                <p className="text-xs font-bold text-slate-500">Total Today</p>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
+                <TrendingUp size={16} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
+                Today's Overview
+              </h4>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Visitors</span>
+                <span className="text-lg font-extrabold text-slate-900 dark:text-white">{analytics.totalVisitors}</span>
               </div>
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-800">
-                <p className="text-2xl font-black text-slate-900 dark:text-white">{analytics.averageDuration}</p>
-                <p className="text-xs font-bold text-slate-500">Avg Duration</p>
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Avg Duration</span>
+                <span className="text-lg font-extrabold text-slate-900 dark:text-white">{analytics.averageDuration}m</span>
+              </div>
+              <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Currently On-Site</span>
+                <span className="text-lg font-extrabold text-slate-900 dark:text-white">{activeVisitors.length}</span>
               </div>
             </div>
           </div>

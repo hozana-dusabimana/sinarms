@@ -4,13 +4,31 @@ import { Users, Plus, Edit2, Trash2, Shield, Search, X } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
 export default function UserManagement() {
-  const { state, createUser, deactivateUser } = useSinarms();
+  const { state, createUser, updateUser, deactivateUser } = useSinarms();
   const users = state.users || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingUserId, setEditingUserId] = useState(null);
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userRole, setUserRole] = useState('receptionist');
   const [userLocationId, setUserLocationId] = useState('');
+  const [userPassword, setUserPassword] = useState('');
+  const isEditing = Boolean(editingUserId);
+
+  const openEditModal = (user) => {
+    setEditingUserId(user.id);
+    setUserName(user.name || '');
+    setUserEmail(user.email || '');
+    setUserRole(user.role || 'receptionist');
+    setUserLocationId(user.locationId || '');
+    setUserPassword('');
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setEditingUserId(null);
+  };
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -24,12 +42,14 @@ export default function UserManagement() {
           </h2>
           <p className="text-slate-500 dark:text-slate-400 font-medium">Manage Admin and Receptionist accounts</p>
         </div>
-        <button 
+        <button
           onClick={() => {
+            setEditingUserId(null);
             setUserName('');
             setUserEmail('');
             setUserRole('receptionist');
             setUserLocationId('');
+            setUserPassword('');
             setIsModalOpen(true);
           }}
           className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2.5 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2"
@@ -97,7 +117,11 @@ export default function UserManagement() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
-                      <button className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors">
+                      <button
+                        onClick={() => openEditModal(u)}
+                        title="Edit user"
+                        className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 transition-colors"
+                      >
                         <Edit2 size={16} />
                       </button>
                       <button
@@ -133,8 +157,8 @@ export default function UserManagement() {
               className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-800"
             >
               <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                <h3 className="font-bold text-lg dark:text-white">Add New User</h3>
-                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"><X size={20}/></button>
+                <h3 className="font-bold text-lg dark:text-white">{isEditing ? 'Edit User' : 'Add New User'}</h3>
+                <button onClick={closeModal} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"><X size={20}/></button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
@@ -163,8 +187,20 @@ export default function UserManagement() {
                     </select>
                   </div>
                 ) : null}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">
+                    {isEditing ? 'New Password (optional)' : 'Password'}
+                  </label>
+                  <input
+                    type="password"
+                    value={userPassword}
+                    onChange={(e) => setUserPassword(e.target.value)}
+                    placeholder={isEditing ? 'Leave blank to keep current' : 'Default: Reception123!'}
+                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
+                  />
+                </div>
                 <div className="pt-4 flex gap-3">
-                  <button onClick={() => setIsModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button onClick={closeModal} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
                   <button onClick={async () => {
                     if (!userName.trim() || !userEmail.trim()) {
                       window.alert('Name and email are required.');
@@ -176,18 +212,25 @@ export default function UserManagement() {
                       return;
                     }
 
+                    const payload = {
+                      name: userName.trim(),
+                      email: userEmail.trim(),
+                      role: userRole,
+                      locationId: userRole === 'receptionist' ? userLocationId : null,
+                    };
+                    if (userPassword) payload.password = userPassword;
+
                     try {
-                      await createUser({
-                        name: userName,
-                        email: userEmail,
-                        role: userRole,
-                        locationId: userRole === 'receptionist' ? userLocationId : null,
-                      });
-                      setIsModalOpen(false);
+                      if (isEditing) {
+                        await updateUser(editingUserId, payload);
+                      } else {
+                        await createUser(payload);
+                      }
+                      closeModal();
                     } catch (error) {
-                      window.alert(error?.message || 'Unable to create user.');
+                      window.alert(error?.message || (isEditing ? 'Unable to update user.' : 'Unable to create user.'));
                     }
-                  }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">Save User</button>
+                  }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">{isEditing ? 'Save Changes' : 'Save User'}</button>
                 </div>
               </div>
             </motion.div>

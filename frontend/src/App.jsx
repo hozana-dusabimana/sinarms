@@ -11,6 +11,8 @@ import OrganizationSettings from './pages/admin/OrganizationSettings';
 import UserManagement from './pages/admin/UserManagement';
 import DashboardPage from './pages/staff/DashboardPage';
 import LoginPage from './pages/staff/LoginPage';
+import ProfilePage from './pages/staff/ProfilePage';
+import VisitorHistoryPage from './pages/staff/VisitorHistoryPage';
 import CheckInPage from './pages/visitor/CheckInPage';
 import CheckoutPage from './pages/visitor/CheckoutPage';
 import MapNavigationPage from './pages/visitor/MapNavigationPage';
@@ -30,12 +32,14 @@ function App() {
           <Route path="/staff" element={<StaffLayout />}>
             <Route index element={<Navigate to="dashboard" replace />} />
             <Route path="dashboard" element={<DashboardPage />} />
+            <Route path="profile" element={<ProfilePage />} />
+            <Route path="history" element={<VisitorHistoryPage />} />
+            <Route path="faq" element={<FaqManagement />} />
             <Route element={<ProtectedStaffRoute adminOnly />}>
               <Route path="map-editor" element={<FacilityMapEditor />} />
               <Route path="organizations" element={<OrganizationSettings />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />
               <Route path="users" element={<UserManagement />} />
-              <Route path="faq" element={<FaqManagement />} />
               <Route path="audit-log" element={<AuditLog />} />
             </Route>
           </Route>

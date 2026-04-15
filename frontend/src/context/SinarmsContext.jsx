@@ -539,6 +539,15 @@ export function SinarmsProvider({ children }) {
     return user;
   }
 
+  async function updateOwnProfile(payload) {
+    const user = await request('/api/users/me', {
+      method: 'put',
+      data: payload,
+    });
+    await loadStaffBootstrap();
+    return user;
+  }
+
   async function updateUserPermissions(userId, nextPermissions) {
     const user = await request(`/api/users/${userId}/permissions`, {
       method: 'put',
@@ -777,6 +786,15 @@ export function SinarmsProvider({ children }) {
     };
   }
 
+  async function fetchVisitorHistory(params = {}) {
+    const query = new URLSearchParams();
+    if (params.organizationId) query.set('organizationId', params.organizationId);
+    if (params.locationId) query.set('locationId', params.locationId);
+    const qs = query.toString();
+    const visitors = await request(`/api/visitors/history${qs ? `?${qs}` : ''}`);
+    return Array.isArray(visitors) ? visitors : [];
+  }
+
   const value = {
     state,
     analytics,
@@ -810,6 +828,7 @@ export function SinarmsProvider({ children }) {
     assignReceptionist,
     createUser,
     updateUser,
+    updateOwnProfile,
     updateUserPermissions,
     deactivateUser,
     createFaq,
@@ -824,6 +843,7 @@ export function SinarmsProvider({ children }) {
     exportAudit,
     exportAnalytics,
     sendChatbotQuery,
+    fetchVisitorHistory,
   };
 
   return <SinarmsContext.Provider value={value}>{children}</SinarmsContext.Provider>;

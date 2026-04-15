@@ -113,11 +113,12 @@ router.get('/active', requireAuth, requirePermission('viewLiveMap'), async (req,
   return res.json(scopeVisitors(state, req.user, { includeHistory: false }));
 });
 
-router.get('/history', requireAuth, requireRole(['admin']), async (req, res) => {
+router.get('/history', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
   return res.json(
     scopeVisitors(state, req.user, {
       includeHistory: true,
+      allDays: true,
       organizationId: req.query.organizationId || undefined,
       locationId: req.query.locationId || undefined,
     }),

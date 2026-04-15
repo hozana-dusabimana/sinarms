@@ -130,8 +130,54 @@ export default function LandingPage() {
       {/* Dotted Grid Overlay */}
       <div className="fixed inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjAwLCAyMDAsIDIwMCwgMC4yKSIvPjwvc3ZnPg==')] dark:bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMSIgY3k9IjEiIHI9IjEiIGZpbGw9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4wNykiLz48L3N2Zz4=')] opacity-50 z-0 pointer-events-none"></div>
 
+      {/* --- TOP NAVBAR --- */}
+      <header className="fixed top-0 inset-x-0 z-50 border-b border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-[#060b14]/70 backdrop-blur-xl">
+        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
+          <a href="#hero" className="flex items-center gap-3 group">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 shadow-md shadow-red-500/20 flex items-center justify-center transition-transform group-hover:scale-110">
+              <Shield size={20} className="text-white" strokeWidth={2.4} />
+            </div>
+            <div className="leading-tight">
+              <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white">SINARMS</h1>
+              <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--color-brand-terracotta)] dark:text-red-400">
+                Smart Navigation
+              </p>
+            </div>
+          </a>
+
+          <nav className="hidden md:flex items-center gap-1">
+            <a href="#showcase" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              Showcase
+            </a>
+            <a href="#features" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              Features
+            </a>
+            <a href="#cta" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              Get Started
+            </a>
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/staff/login')}
+              className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+            >
+              <Shield size={14} /> Staff Login
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/visit')}
+              className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 text-xs font-bold text-white hover:brightness-110 transition-all shadow-md shadow-red-500/30"
+            >
+              <Globe2 size={14} /> Visitor Portal
+            </button>
+          </div>
+        </div>
+      </header>
+
       {/* --- HERO SECTION --- */}
-      <div className="relative z-10 container mx-auto px-6 pt-10 pb-20 lg:pt-20 flex flex-col lg:flex-row items-center justify-between min-h-[100dvh] gap-16">
+      <div id="hero" className="relative z-10 container mx-auto px-6 pt-24 pb-20 lg:pt-32 flex flex-col lg:flex-row items-center justify-between min-h-[100dvh] gap-16">
         
         {/* Left Content Area */}
         <motion.div 
@@ -311,6 +357,7 @@ export default function LandingPage() {
       </div>
       
       {/* --- VISUAL SHOWCASE SECTION --- */}
+      <div id="showcase" className="scroll-mt-20" />
       <div className="relative z-10 w-full bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-24 sm:py-32 overflow-hidden">
         <div className="container mx-auto px-6">
           
@@ -350,6 +397,7 @@ export default function LandingPage() {
       </div>
       
       {/* --- PREMIUM FEATURES SECTION --- */}
+      <div id="features" className="scroll-mt-20" />
       <div className="relative z-10 w-full bg-slate-100 dark:bg-[#060b14] border-t border-slate-200 dark:border-slate-800 py-32">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-20">
@@ -386,6 +434,7 @@ export default function LandingPage() {
       </div>
 
       {/* --- FOOTER CTA --- */}
+      <div id="cta" className="scroll-mt-20" />
       <div className="relative z-10 w-full overflow-hidden bg-slate-950 border-t border-slate-900 border-b-8 border-b-[var(--color-brand-terracotta)]">
         
         {/* Parallax Server Background */}

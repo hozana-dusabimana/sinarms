@@ -4,27 +4,85 @@ import { BarChart3, TrendingUp, Users, Clock, ShieldAlert, ArrowUpRight, ArrowDo
 import { useSinarms } from '../../context/SinarmsContext';
 import api from '../../lib/api';
 
+function weekOfYear(date) {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
+  const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
+  return 1 + Math.round((d - firstThursday) / (7 * 24 * 60 * 60 * 1000));
+}
+
 export default function AnalyticsDashboard() {
   const { analytics: bootstrapAnalytics, exportAnalytics } = useSinarms();
   const [analytics, setAnalytics] = useState(bootstrapAnalytics);
   const [dateRange, setDateRange] = useState('Last 30 Days');
+  const [granularity, setGranularity] = useState('D');
   const arrivalsByDay = analytics.arrivalsByDay || [];
-  const trendDays = arrivalsByDay.length ? arrivalsByDay.slice(-14) : [];
-  const trendMax = Math.max(1, ...trendDays.map((entry) => entry.totalVisitors || 0));
 
-  const trendBars = trendDays.map((entry) => {
-    const total = entry.totalVisitors || 0;
-    const height = Math.round((total / trendMax) * 100);
-    const dateLabel = entry.date
-      ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${entry.date}T00:00:00Z`))
-      : '';
+  const aggregateByGranularity = (days, granularityKey) => {
+    if (!days.length) return [];
+    if (granularityKey === 'D') {
+      return days.slice(-14).map((entry) => ({
+        key: entry.date,
+        label: entry.date
+          ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(`${entry.date}T00:00:00Z`))
+          : '',
+        total: entry.totalVisitors || 0,
+      }));
+    }
+    if (granularityKey === 'W') {
+      const buckets = new Map();
+      days.forEach((entry) => {
+        if (!entry.date) return;
+        const d = new Date(`${entry.date}T00:00:00Z`);
+        const day = d.getUTCDay();
+        const diff = (day + 6) % 7; // week starts Monday
+        const monday = new Date(d);
+        monday.setUTCDate(d.getUTCDate() - diff);
+        const key = monday.toISOString().slice(0, 10);
+        const prev = buckets.get(key) || { key, start: monday, total: 0 };
+        prev.total += entry.totalVisitors || 0;
+        buckets.set(key, prev);
+      });
+      return Array.from(buckets.values())
+        .sort((a, b) => a.start - b.start)
+        .slice(-8)
+        .map((bucket) => ({
+          key: bucket.key,
+          label: `W${String(weekOfYear(bucket.start)).padStart(2, '0')}`,
+          total: bucket.total,
+        }));
+    }
+    // 'M' — group by year+month
+    const buckets = new Map();
+    days.forEach((entry) => {
+      if (!entry.date) return;
+      const d = new Date(`${entry.date}T00:00:00Z`);
+      const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const prev = buckets.get(key) || { key, date: d, total: 0 };
+      prev.total += entry.totalVisitors || 0;
+      buckets.set(key, prev);
+    });
+    return Array.from(buckets.values())
+      .sort((a, b) => a.date - b.date)
+      .slice(-6)
+      .map((bucket) => ({
+        key: bucket.key,
+        label: new Intl.DateTimeFormat('en-GB', { month: 'short', year: '2-digit' }).format(bucket.date),
+        total: bucket.total,
+      }));
+  };
 
-    return {
-      dateLabel,
-      height,
-      total,
-    };
-  });
+  const trendSeries = aggregateByGranularity(arrivalsByDay, granularity);
+  const trendMax = Math.max(1, ...trendSeries.map((entry) => entry.total || 0));
+
+  const trendBars = trendSeries.map((entry) => ({
+    dateLabel: entry.label,
+    height: Math.round((entry.total / trendMax) * 100),
+    total: entry.total,
+  }));
 
   useEffect(() => {
     setAnalytics(bootstrapAnalytics);
@@ -129,7 +187,18 @@ export default function AnalyticsDashboard() {
             </h3>
             <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
               {['D', 'W', 'M'].map(p => (
-                <button key={p} className={`px-3 py-1 text-xs font-bold rounded-md ${p === 'D' ? 'bg-white text-slate-900 dark:bg-slate-700 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>{p}</button>
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setGranularity(p)}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                    p === granularity
+                      ? 'bg-white text-slate-900 dark:bg-slate-700 dark:text-white shadow-sm'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                  }`}
+                >
+                  {p}
+                </button>
               ))}
             </div>
           </div>

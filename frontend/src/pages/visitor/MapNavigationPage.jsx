@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { Navigation2, CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -126,10 +126,15 @@ export default function MapNavigationPage() {
   const [livePosition, setLivePosition] = useState(null);
   const [simulatedPosition, setSimulatedPosition] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isAlertsOpen, setIsAlertsOpen] = useState(false);
+  const [activeRail, setActiveRail] = useState('map');
   const watchIdRef = useRef(null);
   const simulationTimerRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
+  const mapRef = useRef(null);
+  const routeListRef = useRef(null);
 
   useEffect(() => {
     const visitorIdFromRoute = routerLocation.state?.visitorId;
@@ -321,12 +326,125 @@ export default function MapNavigationPage() {
     : [];
 
   const destinationLabel = destinationNode?.label || routeFallbackNode?.label || 'Destination';
+  const currentNodeLabel = currentNode?.label || 'Current location';
+  const totalSteps = liveSteps.length;
+  const completedSteps = liveSteps.filter((step) => step.done).length;
+  const remainingDistance = liveSteps
+    .filter((step) => !step.done)
+    .reduce((total, step) => total + (step.distance || 0), 0);
+  const progressPercent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
+
+  const totalRouteDistance = liveSteps.reduce((total, step) => total + (step.distance || 0), 0);
+  const completedDistance = Math.max(0, totalRouteDistance - remainingDistance);
+  const etaMinutes = Math.max(1, Math.round(remainingDistance / 70)); // ~70m/min walking pace
+  const currentStep = liveSteps.find((step) => step.current) || liveSteps.find((step) => !step.done);
+  const corridorHint = currentStep?.text || 'Follow posted signage';
+
+  const handleRecenterMap = () => {
+    setActiveRail('map');
+    const m = mapRef.current;
+    if (!m) return;
+    const valid = allPositions.filter(isValidLatLng);
+    if (valid.length >= 2) {
+      m.fitBounds(L.latLngBounds(valid), { padding: [40, 40], maxZoom: 19 });
+    } else if (valid.length === 1) {
+      m.setView(valid[0], 19);
+    }
+  };
+
+  const handleScrollTop = () => {
+    const el = routeListRef.current || mapRef.current?.getContainer?.();
+    let scroller = el?.parentElement;
+    while (scroller && scroller !== document.body) {
+      const style = window.getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(style.overflowY)) break;
+      scroller = scroller.parentElement;
+    }
+    if (scroller && scroller !== document.body) {
+      scroller.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleFocusRoute = () => {
+    setActiveRail('route');
+    const el = routeListRef.current;
+    if (!el) return;
+    // Scroll only the main column (the nearest overflow-y-auto ancestor) so the
+    // route card is visible — avoid scrollIntoView, which can nudge outer
+    // layout scrollers and appear to hide the top bar.
+    let scroller = el.parentElement;
+    while (scroller && scroller !== document.body) {
+      const style = window.getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(style.overflowY)) break;
+      scroller = scroller.parentElement;
+    }
+    if (scroller && scroller !== document.body) {
+      const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+      scroller.scrollTo({ top: Math.max(0, top - 8), behavior: 'smooth' });
+    }
+    const currentEl = el.querySelector('[data-step-current="true"]');
+    if (currentEl && scroller && scroller !== document.body) {
+      setTimeout(() => {
+        const cTop = currentEl.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+        scroller.scrollTo({ top: Math.max(0, cTop - scroller.clientHeight / 2), behavior: 'smooth' });
+      }, 260);
+    }
+  };
+
+  const handleOpenChat = () => {
+    setActiveRail('chat');
+    setIsChatOpen(true);
+  };
+
+  const handleOpenAlerts = () => {
+    setActiveRail('alerts');
+    setIsAlertsOpen(true);
+  };
+
+  const railItems = [
+    { key: 'map', icon: <MapLucide size={18} />, label: 'Recenter map', onClick: handleRecenterMap },
+    { key: 'route', icon: <Route size={18} />, label: 'Focus route', onClick: handleFocusRoute },
+    { key: 'chat', icon: <MessageCircle size={18} />, label: 'Ask assistant', onClick: handleOpenChat },
+    { key: 'alerts', icon: <Bell size={18} />, label: 'Alerts & info', onClick: handleOpenAlerts },
+  ];
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] overflow-hidden relative">
+    <div className={`relative ${isFullscreen ? '' : 'flex gap-4 flex-1 min-h-0 h-full md:pl-20'}`}>
+
+      {/* Left Icon Rail — fixed to viewport so it never scrolls with content */}
+      {!isFullscreen && (
+        <aside className="hidden md:flex flex-col items-center gap-2 w-16 py-4 rounded-2xl bg-white/80 dark:bg-slate-900/70 backdrop-blur-md border border-slate-200 dark:border-slate-800 shadow-sm fixed left-4 sm:left-6 top-20 bottom-20 z-[400] overflow-y-auto custom-scrollbar">
+          <button
+            type="button"
+            onClick={handleScrollTop}
+            title="Scroll to top"
+            className="w-11 h-11 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 flex items-center justify-center shadow-md shadow-red-500/30 mb-2 hover:scale-105 transition-transform"
+          >
+            <ShieldCheck size={20} className="text-white" strokeWidth={2.4} />
+          </button>
+          <div className="w-8 h-px bg-slate-200 dark:bg-slate-800 my-1" />
+          {railItems.map((item) => (
+            <button
+              key={item.key}
+              title={item.label}
+              onClick={item.onClick}
+              className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
+                activeRail === item.key
+                  ? 'bg-red-50 dark:bg-red-500/15 text-[var(--color-brand-terracotta)] dark:text-red-400 shadow-sm border border-red-100 dark:border-red-500/30'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              {item.icon}
+            </button>
+          ))}
+        </aside>
+      )}
+
+      {/* Main content column — scrolls independently; rail stays pinned via sticky */}
+      <div className="flex-1 min-w-0 flex flex-col gap-4 min-h-0 overflow-y-auto custom-scrollbar pr-1">
 
       {/* Map Area */}
-      <div className={`flex-1 relative glass-card overflow-hidden rounded-2xl border-4 border-slate-50 dark:border-slate-800 shadow-xl mb-4 bg-slate-100/50 dark:bg-slate-900 z-0 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[500] rounded-none border-0 mb-0' : ''}`}>
+      <div className={`relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl bg-slate-100/50 dark:bg-slate-900 z-0 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[500] rounded-none border-0' : 'h-[55vh] min-h-[320px] flex-shrink-0'}`}>
         <div className="absolute top-4 right-4 z-[650] flex gap-2">
           <button
             onClick={() => setIsSimulating((prev) => !prev)}
@@ -349,6 +467,7 @@ export default function MapNavigationPage() {
         </div>
 
         <MapContainer
+          ref={mapRef}
           center={defaultCenter}
           zoom={19}
           scrollWheelZoom={true}
@@ -407,52 +526,212 @@ export default function MapNavigationPage() {
             </Marker>
           )}
         </MapContainer>
-      </div>
 
-      {/* Step by Step Navigation Drawer */}
-      <div className={`h-64 bg-white dark:bg-[#0b101e] border-t border-slate-200 dark:border-slate-800 shrink-0 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] -mx-6 px-6 pt-6 pb-24 overflow-y-auto ${isFullscreen ? 'hidden' : ''}`}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-            <Navigation2 size={20} className="text-[var(--color-brand-terracotta)] dark:text-red-500" />
-            Route Instructions
-          </h3>
-          <button
-            onClick={() => navigate('/visit/checkout')}
-            className="text-xs font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-3 py-1.5 rounded-lg shadow-sm hover:scale-105 transition-transform"
-          >
-            End Visit
-          </button>
-        </div>
-
-        {liveSteps.length > 0 ? (
-          <div className="space-y-4 relative before:absolute before:inset-y-0 before:left-6 before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 -ml-2 pl-2">
-            {liveSteps.map((step) => (
-              <div key={step.id} className={`flex items-start gap-4 relative z-10 ${step.done ? 'opacity-50' : 'opacity-100'}`}>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-4 border-white dark:border-[#0b101e] shadow-sm transition-colors ${
-                  step.current ? 'bg-[var(--color-brand-terracotta)] text-white scale-110 shadow-[0_0_15px_rgba(205,92,92,0.4)] dark:bg-red-500 dark:shadow-[0_0_15px_rgba(239,68,68,0.4)]' :
-                  step.done ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                }`}>
-                  {step.icon}
-                </div>
-                <div className={`mt-1 flex-1 ${step.current ? 'text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-500'}`}>
-                  <p className={`font-semibold ${step.current && 'text-lg'}`}>{step.text}</p>
-                  {step.distance > 0 && (
-                    <p className="text-xs font-bold uppercase tracking-widest opacity-60 mt-1">{step.distance} meters</p>
-                  )}
-                </div>
-              </div>
-            ))}
+        {/* Floating location pill at bottom of map */}
+        {!isFullscreen && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[650] flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
+            <MapPin size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{currentNodeLabel}</span>
+            <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{Math.round(remainingDistance)}m away</span>
           </div>
-        ) : (
-          <p className="text-slate-500 dark:text-slate-400 text-sm">No route instructions available. Please ask at the Reception desk.</p>
         )}
       </div>
 
-      {/* Slide-Up Chat Component */}
+      {/* Bottom Grid: Route Instructions + Stats Stack */}
+      {!isFullscreen && (
+        <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-4 flex-shrink-0">
+          {/* Route Instructions */}
+          <div ref={routeListRef} className="glass-card px-6 pt-5 pb-6 custom-scrollbar flex flex-col max-h-[60vh]">
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 text-[var(--color-brand-terracotta)] dark:text-red-400 flex items-center justify-center">
+                  <Route size={16} strokeWidth={2.5} />
+                </div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Route Instructions</h3>
+              </div>
+              <button
+                onClick={() => navigate('/visit/checkout')}
+                className="text-xs font-bold bg-white dark:bg-slate-100 text-slate-900 px-4 py-2 rounded-lg shadow-sm hover:scale-105 transition-transform border border-slate-200 dark:border-transparent"
+              >
+                End Visit
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+              {liveSteps.length > 0 ? (
+                <div className="space-y-4 relative before:absolute before:top-5 before:bottom-5 before:left-5 before:w-[2px] before:bg-gradient-to-b before:from-slate-200 before:to-transparent dark:before:from-slate-700/50">
+                  {liveSteps.map((step) => (
+                    <div key={step.id} data-step-current={step.current ? 'true' : 'false'} className={`flex items-start gap-4 relative z-10 transition-opacity ${step.done ? 'opacity-40' : 'opacity-100'}`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 border-4 border-white dark:border-slate-900 shadow-sm transition-all ${
+                        step.current
+                          ? 'bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 text-white scale-110 shadow-[0_0_18px_rgba(205,92,92,0.5)]'
+                          : step.done
+                          ? 'bg-green-500 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                      }`}>
+                        {step.icon}
+                      </div>
+                      <div className={`mt-1 flex-1 min-w-0 ${step.current ? 'text-slate-900 dark:text-slate-100' : 'text-slate-600 dark:text-slate-400'}`}>
+                        <p className={`font-semibold ${step.current ? 'text-base' : 'text-sm'}`}>{step.text}</p>
+                        {step.distance > 0 && (
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-1">
+                            {step.distance} meters
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-slate-500 dark:text-slate-400 text-sm">No route instructions available. Please ask at the Reception desk.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Stats Stack */}
+          <div className="flex flex-col gap-4 min-h-0">
+            {/* Progress Card */}
+            <div className="glass-card p-5 relative overflow-hidden">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Progress</p>
+              <div className="mt-1 flex items-baseline gap-1">
+                <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none">{progressPercent}</p>
+                <span className="text-lg font-bold text-slate-500 dark:text-slate-400">%</span>
+              </div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">
+                {Math.round(completedDistance)} of {Math.round(totalRouteDistance)} meters
+              </p>
+              <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
+                <div
+                  className="h-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 rounded-full transition-all duration-500"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+            </div>
+
+            {/* ETA Card */}
+            <div className="glass-card p-5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">ETA</p>
+              <div className="mt-1 flex items-baseline gap-1">
+                <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none">{etaMinutes}</p>
+                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">min</span>
+              </div>
+              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 truncate">
+                {corridorHint}
+              </p>
+            </div>
+
+            {/* Destination Info Card */}
+            <div className="glass-card p-5 flex-1">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">Destination</p>
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-red-500/20">
+                  <Target size={18} className="text-white" strokeWidth={2.4} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{destinationLabel}</p>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                    {totalSteps} step{totalSteps === 1 ? '' : 's'} • {Math.round(totalRouteDistance)}m total
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Visitor</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate mt-0.5">{currentVisitor.name}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </div>
+
+      {/* Slide-Up Chat Component (controlled by rail, with its own floating launcher) */}
       <AIChatbot
         organizationId={currentVisitor?.organizationId}
         locationId={currentVisitor?.locationId}
+        open={isChatOpen}
+        onOpenChange={setIsChatOpen}
       />
+
+      {/* Alerts & Info Modal */}
+      <AnimatePresence>
+        {isAlertsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[700] bg-slate-900/60 backdrop-blur-sm flex items-end md:items-center justify-center p-4"
+            onClick={() => setIsAlertsOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0, scale: 0.96 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 40, opacity: 0, scale: 0.96 }}
+              transition={{ type: 'spring', damping: 24, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full md:max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+            >
+              <div className="bg-gradient-to-r from-[var(--color-brand-terracotta)] to-slate-900 p-4 flex items-center justify-between text-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg leading-tight">Alerts & Info</h3>
+                    <p className="text-xs text-slate-200/80 font-medium">Your current visit</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsAlertsOpen(false)}
+                  aria-label="Close alerts"
+                  className="w-10 h-10 flex items-center justify-center bg-white/90 hover:bg-white text-slate-900 rounded-full shadow-md transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Visitor</p>
+                  <div className="mt-2 flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 dark:from-slate-200 dark:to-slate-400 flex items-center justify-center text-white dark:text-slate-900">
+                      <User size={16} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{currentVisitor.name}</p>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
+                        {location?.name || 'On site'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Destination</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">{destinationLabel}</p>
+                  <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                    {Math.round(remainingDistance)}m remaining • ~{etaMinutes} min
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-brand-terracotta)] dark:text-red-400">Emergency</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
+                    If you feel unsafe or lost, contact Reception immediately.
+                  </p>
+                  <a
+                    href="tel:+250788000000"
+                    className="mt-3 inline-flex items-center gap-2 text-xs font-bold bg-[var(--color-brand-terracotta)] dark:bg-red-500 text-white px-4 py-2 rounded-full shadow-sm hover:scale-105 transition-transform"
+                  >
+                    <Phone size={14} /> Call Reception
+                  </a>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -39,6 +39,7 @@ function shouldPolish(localAnswer) {
   if (!answer) return false;
 
   if (localAnswer.type === 'greeting') return false;
+  if (localAnswer.source === 'llm-fallback') return false;
 
   return true;
 }
@@ -170,8 +171,94 @@ async function polishAnswer({ query, localAnswer, context }) {
   }
 }
 
+/**
+ * Generate an answer from scratch using the LLM, grounded in the facility's
+ * destinations and FAQ. Used as a last-chance fallback when neither the intent
+ * classifier nor the FAQ matcher could answer. The LLM is instructed to stay
+ * grounded and to admit uncertainty rather than invent facts.
+ */
+async function answerWithKnowledge({ query, context }) {
+  if (!isEnabled()) return null;
+  const trimmed = String(query || '').trim();
+  if (!trimmed) return null;
+
+  const destinations = (context && Array.isArray(context.availableDestinations))
+    ? context.availableDestinations.slice(0, 40)
+    : [];
+  const faq = (context && Array.isArray(context.faq)) ? context.faq.slice(0, 25) : [];
+
+  const system = [
+    'You are the SINARMS visitor assistant in an office building reception.',
+    'Answer the visitor\'s question using ONLY the facts provided below (destinations and FAQ).',
+    'Keep the reply short (1-2 sentences), friendly, and in the same language as the user.',
+    'If the question asks about a place, direct them using the destination names from the list.',
+    'If the answer is not in the provided facts, say you are not sure and suggest asking the Reception desk — do NOT invent room numbers, staff names, phone numbers, or policies.',
+    'Do not greet, sign off, or add disclaimers.',
+  ].join(' ');
+
+  const knowledgeLines = [];
+  if (context && context.locationName) {
+    knowledgeLines.push(`Current location: ${context.locationName}`);
+  }
+  if (destinations.length) {
+    knowledgeLines.push(`Available destinations: ${destinations.join(', ')}`);
+  }
+  if (faq.length) {
+    knowledgeLines.push('FAQ facts:');
+    faq.forEach((entry, idx) => {
+      const q = String(entry.question || '').trim();
+      const a = String(entry.answer || '').trim();
+      if (q && a) knowledgeLines.push(`${idx + 1}. Q: ${q}\n   A: ${a}`);
+    });
+  }
+
+  const user = [
+    `Visitor question: ${trimmed}`,
+    '',
+    knowledgeLines.join('\n'),
+    '',
+    'Reply directly with the answer only.',
+  ].join('\n');
+
+  try {
+    const response = await httpPostJson(
+      OPENROUTER_URL,
+      {
+        model: DEFAULT_MODEL,
+        temperature: 0.4,
+        max_tokens: 160,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+      },
+      {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'HTTP-Referer': process.env.OPENROUTER_REFERER || 'http://localhost',
+        'X-Title': 'SINARMS Visitor Assistant',
+      },
+    );
+
+    const text = response
+      && response.choices
+      && response.choices[0]
+      && response.choices[0].message
+      && String(response.choices[0].message.content || '').trim();
+
+    if (!text) return null;
+    return text;
+  } catch (error) {
+    if (process.env.NODE_ENV !== 'test') {
+      // eslint-disable-next-line no-console
+      console.warn('[openrouter] knowledge answer failed:', error.message);
+    }
+    return null;
+  }
+}
+
 module.exports = {
   isEnabled,
   polishAnswer,
   shouldPolish,
+  answerWithKnowledge,
 };

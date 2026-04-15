@@ -25,12 +25,12 @@ function pushFaqToAiEngine(faq) {
     .catch(() => null);
 }
 
-router.get('/', requireAuth, requireRole(['admin']), async (req, res) => {
+router.get('/', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
   return res.json(state.faq);
 });
 
-router.post('/', requireAuth, requireRole(['admin']), async (req, res) => {
+router.post('/', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const faqId = createId('faq');
   const nextState = await mutateState((draft) => {
     draft.faq.unshift({
@@ -57,7 +57,7 @@ router.post('/', requireAuth, requireRole(['admin']), async (req, res) => {
   return res.status(201).json(nextState.faq.find((entry) => entry.id === faqId));
 });
 
-router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+router.put('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const nextState = await mutateState((draft) => {
     const faqEntry = draft.faq.find((entry) => entry.id === req.params.id);
     if (!faqEntry) {
@@ -82,7 +82,7 @@ router.put('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
   return res.json(faqEntry);
 });
 
-router.delete('/:id', requireAuth, requireRole(['admin']), async (req, res) => {
+router.delete('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
   if (!state.faq.find((entry) => entry.id === req.params.id)) {
     return res.status(404).json({ message: 'FAQ entry not found.' });

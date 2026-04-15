@@ -1,11 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Bot, Mic, MicOff, Navigation2 } from 'lucide-react';
+import { Sparkles, X, Send, Bot, Mic, MicOff, Navigation2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
-export default function AIChatbot({ organizationId, locationId } = {}) {
+export default function AIChatbot({ organizationId, locationId, open, onOpenChange, hideLauncher = false } = {}) {
   const { sendChatbotQuery, rerouteVisitor, currentVisitor } = useSinarms();
-  const [isOpen, setIsOpen] = useState(false);
+  const isControlled = typeof open === 'boolean' && typeof onOpenChange === 'function';
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isOpen = isControlled ? open : internalOpen;
+  const setIsOpen = (next) => {
+    if (isControlled) onOpenChange(typeof next === 'function' ? next(isOpen) : next);
+    else setInternalOpen(next);
+  };
   const [messages, setMessages] = useState([
     { id: 1, sender: 'bot', text: 'Hello! I am your AI assistant. Ask me questions like "Where is the toilet?" or "How do I get to the HR office?"' }
   ]);
@@ -155,14 +161,20 @@ export default function AIChatbot({ organizationId, locationId } = {}) {
 
   return (
     <>
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-full shadow-2xl flex items-center justify-center z-[600] border border-slate-700 dark:border-slate-300"
-      >
-        <MessageSquare size={24} />
-      </motion.button>
+      {!hideLauncher && (
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setIsOpen(true)}
+          aria-label="Open AI assistant"
+          className="fixed bottom-24 right-6 w-14 h-14 bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 text-white rounded-full shadow-2xl shadow-red-500/40 flex items-center justify-center z-[600] border border-white/20"
+        >
+          <Bot size={24} strokeWidth={2.2} />
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-md">
+            <Sparkles size={10} className="text-[var(--color-brand-terracotta)]" strokeWidth={3} />
+          </span>
+        </motion.button>
+      )}
 
       <AnimatePresence>
         {isOpen && (
@@ -172,7 +184,7 @@ export default function AIChatbot({ organizationId, locationId } = {}) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 100, scale: 0.95 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-x-4 bottom-24 top-24 md:top-auto md:w-96 md:h-[500px] md:left-auto md:right-6 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl z-[600] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
+            className="fixed inset-x-4 bottom-24 top-24 md:top-auto md:w-96 md:h-[min(500px,calc(100dvh-160px))] md:left-auto md:right-6 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl z-[600] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
           >
             <div className="bg-gradient-to-r from-[var(--color-brand-terracotta)] to-slate-900 p-4 flex items-center justify-between text-white drop-shadow-md z-10">
               <div className="flex items-center gap-3">
