@@ -282,4 +282,14 @@ All values are environment-overridable (see [app/config.py](app/config.py)):
 | `SINARMS_CONFIDENCE_RESOLVE`   | `0.68`                                                          | Minimum cosine to skip the confirm step         |
 | `SINARMS_CONFIDENCE_CONFIRM`   | `0.40`                                                          | Minimum cosine to surface alternatives at all   |
 | `SINARMS_FAQ_THRESHOLD`        | `0.55`                                                          | Minimum cosine to return an FAQ answer          |
-| `SINARMS_FT_BLEND_WEIGHT`      | `0.3`                                                           | Weight of fine-tuned vote when blended          |
+| `SINARMS_FT_BLEND_WEIGHT`      | `0.3`                                                           | Weight of 
+fine-tuned vote when blended          |
+
+feedbacks
+-----------
+in add user in select location, show also organization 
+change ruliba locations
+if user reaches location, show notification or sound
+validations on visitor
+qr code scan on location 
+implement translations
