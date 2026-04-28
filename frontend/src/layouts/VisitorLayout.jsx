@@ -2,6 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { ShieldCheck, Globe2, LogOut } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useSinarms } from '../context/SinarmsContext';
+import { useLanguage } from '../context/LanguageContext';
 import NotificationsPanel from '../components/common/NotificationsPanel';
 import { getLocationMap, getLocationById, getNode } from '../lib/sinarmsEngine';
 
@@ -22,6 +23,7 @@ export default function VisitorLayout() {
   const navigate = useNavigate();
   const isNavigating = location.pathname.includes('/navigate');
   const { currentVisitor, state } = useSinarms();
+  const { label: languageLabel, cycleLanguage, t } = useLanguage();
   const [readIds, setReadIds] = useState(loadVisitorRead);
 
   useEffect(() => {
@@ -125,7 +127,7 @@ export default function VisitorLayout() {
             <div className="hidden sm:flex items-center gap-2 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                {isNavigating ? 'Navigating' : 'Online'}
+                {isNavigating ? t('visitor.layout.navigating') : t('visitor.layout.online')}
               </span>
             </div>
             {currentVisitor && (
@@ -143,14 +145,16 @@ export default function VisitorLayout() {
                 onClick={() => navigate('/visit/checkout')}
                 className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 border border-red-500/40 text-xs font-bold text-white hover:brightness-110 transition-all shadow-md shadow-red-500/30"
               >
-                <LogOut size={14} /> End Visit
+                <LogOut size={14} /> {t('visitor.nav.endVisit')}
               </button>
             )}
             <button
               type="button"
+              onClick={cycleLanguage}
+              aria-label="Change language"
               className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
             >
-              <Globe2 size={14} /> EN
+              <Globe2 size={14} /> {languageLabel}
             </button>
           </div>
         </div>

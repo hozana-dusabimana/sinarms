@@ -732,8 +732,66 @@ async function notifyDepartment({ actorUser, visitorId }) {
   return visitor;
 }
 
+// Pick a sensible default destination for a QR-scan visitor: prefer a node
+// explicitly labelled "reception" / "front desk", then any office node, then
+// the entrance itself as a last-resort.
+function pickDefaultDestinationNode(map) {
+  if (!map?.nodes?.length) return null;
+  const nodes = map.nodes;
+  const matchByLabel = (re) => nodes.find((n) => re.test(String(n.label || '')));
+  return (
+    matchByLabel(/reception|front\s*desk|akira|accueil/i) ||
+    nodes.find((n) => n.type === 'office') ||
+    nodes.find((n) => n.id === 'entrance') ||
+    nodes[0] ||
+    null
+  );
+}
+
+async function qrCheckin({ qrToken, locationId, name, idOrPhone, language }) {
+  const state = await getState();
+  const location = state.locations.find(
+    (entry) => entry.id === locationId && entry.qrCodeToken === qrToken,
+  );
+
+  if (!location || location.status !== 'active') {
+    return { error: 'invalid_qr', message: 'This QR code is not valid for any active location.' };
+  }
+
+  const map = getLocationMap(state, location.id);
+  const destinationNode = pickDefaultDestinationNode(map);
+
+  if (!destinationNode) {
+    return { error: 'no_destination', message: 'No destinations are configured for this location yet.' };
+  }
+
+  const result = await registerVisitor({
+    actorUser: null,
+    source: 'self',
+    payload: {
+      name: (name && name.trim()) || 'QR Visitor',
+      idOrPhone: idOrPhone || 'qr',
+      idNumber: idOrPhone || 'qr',
+      phone: idOrPhone || '',
+      destinationText: destinationNode.label,
+      destinationNodeId: destinationNode.id,
+      organizationId: location.organizationId,
+      locationId: location.id,
+      language: language || 'en',
+    },
+  });
+
+  return result;
+}
+
 async function generateLocationQr(location) {
-  return QRCode.toString(`sinarms://checkin?location=${location.id}&token=${location.qrCodeToken}`, {
+  // Encode a real https URL so phone cameras open the visitor portal directly,
+  // pre-filled with the location id and one-time QR token. The portal detects
+  // these query params and auto-creates a visit instead of showing the form.
+  const config = require('../config');
+  const base = (config.frontendUrl || 'http://localhost:5173').replace(/\/+$/, '');
+  const url = `${base}/visit?qr=${encodeURIComponent(location.qrCodeToken)}&location=${encodeURIComponent(location.id)}`;
+  return QRCode.toString(url, {
     type: 'svg',
     margin: 1,
   });
@@ -932,6 +990,7 @@ module.exports = {
   logout,
   notifyDepartment,
   publicUser,
+  qrCheckin,
   queryFaq,
   registerVisitor,
   resolveAlert,

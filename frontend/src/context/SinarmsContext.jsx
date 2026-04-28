@@ -340,6 +340,25 @@ export function SinarmsProvider({ children }) {
     return refreshCurrentVisitor(visitorId);
   }
 
+  async function qrCheckin({ qrToken, locationId, name, idOrPhone, language }) {
+    const data = await request('/api/visitors/qr-checkin', {
+      method: 'post',
+      data: { qrToken, locationId, name, idOrPhone, language },
+    });
+
+    if (!data?.visitor) {
+      throw new Error(data?.classification?.message || 'Unable to register QR visitor.');
+    }
+
+    setState((current) => ({
+      ...current,
+      visitors: upsertById(current.visitors, data.visitor),
+    }));
+    setActiveVisitorId(data.visitor.id);
+
+    return data.visitor;
+  }
+
   async function moveVisitor(visitorId, nodeId = null, source = 'wifi') {
     const visitor = await request(`/api/visitors/${visitorId}/position`, {
       method: 'post',
@@ -811,6 +830,7 @@ export function SinarmsProvider({ children }) {
     logout,
     classifyVisitorDestination,
     registerVisitor,
+    qrCheckin,
     setCurrentVisitor,
     moveVisitor,
     rerouteVisitor,

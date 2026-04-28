@@ -77,19 +77,26 @@ function removeLegacyPartnerDefaults(state) {
   let changed = false;
 
   const legacyOrgId = 'org-kigali-industries';
+  // The Ruliba site was originally seeded as two separate locations
+  // (`loc-ruliba-hq` and `loc-ruliba-factory`). We now ship a single
+  // consolidated `loc-ruliba-main`, so existing dev databases need both
+  // legacy ids stripped along with anything that referenced them.
+  const RETIRED_LOCATION_IDS = new Set(['loc-kigali-industries', 'loc-ruliba-hq', 'loc-ruliba-factory']);
   const legacyLocationIds = new Set(
     (nextState.locations || [])
-      .filter((location) => location.organizationId === legacyOrgId || location.id === 'loc-kigali-industries')
+      .filter((location) => location.organizationId === legacyOrgId || RETIRED_LOCATION_IDS.has(location.id))
       .map((location) => location.id),
   );
+  RETIRED_LOCATION_IDS.forEach((id) => legacyLocationIds.add(id));
 
   if ((nextState.organizations || []).some((organization) => organization.id === legacyOrgId)) {
     nextState.organizations = nextState.organizations.filter((organization) => organization.id !== legacyOrgId);
     changed = true;
   }
 
-  if (legacyLocationIds.size > 0) {
-    nextState.locations = (nextState.locations || []).filter((location) => !legacyLocationIds.has(location.id));
+  const beforeLocationCount = (nextState.locations || []).length;
+  nextState.locations = (nextState.locations || []).filter((location) => !legacyLocationIds.has(location.id));
+  if (nextState.locations.length !== beforeLocationCount) {
     changed = true;
   }
 

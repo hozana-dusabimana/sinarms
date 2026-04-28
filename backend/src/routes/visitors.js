@@ -5,6 +5,7 @@ const {
   buildVisitorResponse,
   checkoutVisitor,
   notifyDepartment,
+  qrCheckin,
   registerVisitor,
   rerouteVisitor,
   scopeVisitors,
@@ -19,6 +20,22 @@ router.post('/checkin', async (req, res) => {
     payload: req.body,
     source: 'self',
   });
+  return res.json(result);
+});
+
+router.post('/qr-checkin', async (req, res) => {
+  const { qrToken, locationId, name, idOrPhone, language } = req.body || {};
+
+  if (!qrToken || !locationId) {
+    return res.status(400).json({ message: 'qrToken and locationId are required.' });
+  }
+
+  const result = await qrCheckin({ qrToken, locationId, name, idOrPhone, language });
+
+  if (result?.error) {
+    return res.status(404).json({ message: result.message });
+  }
+
   return res.json(result);
 });
 

@@ -19,7 +19,11 @@
       "Bash(python -m venv venv)",
       "Bash(./venv/Scripts/python.exe -m pip install --upgrade pip)",
       "Bash(./venv/Scripts/python.exe -m pip install -r requirements.txt)",
-      "Bash(AI_ENGINE_DISABLED=1 npx jest --forceExit)"
+      "Bash(AI_ENGINE_DISABLED=1 npx jest --forceExit)",
+      "Bash(node -e \"require\\('./src/routes/visitors'\\); require\\('./src/services/domain'\\); console.log\\('OK'\\);\")",
+      "WebSearch",
+      "Bash(node -e ' *)",
+      "Bash(npx vitest *)"
     ]
   }
 }

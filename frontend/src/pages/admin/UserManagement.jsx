@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, Edit2, Trash2, Shield, Search, X } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function UserManagement() {
   const { state, createUser, updateUser, deactivateUser } = useSinarms();
+  const { t } = useLanguage();
   const users = state.users || [];
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
@@ -14,6 +16,20 @@ export default function UserManagement() {
   const [userLocationId, setUserLocationId] = useState('');
   const [userPassword, setUserPassword] = useState('');
   const isEditing = Boolean(editingUserId);
+
+  const locationOptions = useMemo(
+    () =>
+      (state.locations || [])
+        .map((location) => {
+          const orgName = state.organizations.find((org) => org.id === location.organizationId)?.name || '—';
+          return {
+            id: location.id,
+            label: `${orgName} | ${location.name}`,
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [state.locations, state.organizations],
+  );
 
   const openEditModal = (user) => {
     setEditingUserId(user.id);
@@ -178,11 +194,11 @@ export default function UserManagement() {
                 </div>
                 {userRole === 'receptionist' ? (
                   <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Assigned Location</label>
+                    <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('admin.users.assignedLocation')}</label>
                     <select value={userLocationId} onChange={(e) => setUserLocationId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]">
-                      <option value="" disabled>Select a location...</option>
-                      {state.locations.map((location) => (
-                        <option key={location.id} value={location.id}>{location.name}</option>
+                      <option value="" disabled>{t('admin.users.selectLocation')}</option>
+                      {locationOptions.map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
                       ))}
                     </select>
                   </div>

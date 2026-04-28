@@ -287,7 +287,7 @@ fine-tuned vote when blended          |
 
 feedbacks
 -----------
-in add user in select location, show also organization 
+
 change ruliba locations
 if user reaches location, show notification or sound
 validations on visitor

@@ -4,11 +4,14 @@ import './index.css';
 import 'leaflet/dist/leaflet.css';
 import App from './App.jsx';
 import { SinarmsProvider } from './context/SinarmsContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <SinarmsProvider>
-      <App />
-    </SinarmsProvider>
+    <LanguageProvider>
+      <SinarmsProvider>
+        <App />
+      </SinarmsProvider>
+    </LanguageProvider>
   </StrictMode>,
 )

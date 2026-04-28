@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getLocationById, getNode } from '../../lib/sinarmsEngine';
 
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
@@ -122,6 +123,7 @@ export default function MapNavigationPage() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
   const { state, currentVisitor, setCurrentVisitor, moveVisitor, isReady } = useSinarms();
+  const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [livePosition, setLivePosition] = useState(null);
   const [simulatedPosition, setSimulatedPosition] = useState(null);
@@ -129,10 +131,12 @@ export default function MapNavigationPage() {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeRail, setActiveRail] = useState('map');
+  const [arrivalToast, setArrivalToast] = useState(null);
   const watchIdRef = useRef(null);
   const simulationTimerRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
+  const arrivalAnnouncedRef = useRef(null);
   const mapRef = useRef(null);
   const routeListRef = useRef(null);
 
@@ -231,10 +235,84 @@ export default function MapNavigationPage() {
     };
   }, [isSimulating, currentVisitor?.id, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state]);
 
+  // Arrival announcement: when the visitor reaches their destination, play a
+  // spoken cue and a soft chime, and surface a toast banner. We only announce
+  // once per (visitorId, destinationNodeId) so re-renders don't replay it.
+  useEffect(() => {
+    if (!currentVisitor?.id) return;
+    const reached =
+      currentVisitor.destinationNodeId &&
+      currentVisitor.currentNodeId === currentVisitor.destinationNodeId;
+    if (!reached) return;
+
+    const key = `${currentVisitor.id}:${currentVisitor.destinationNodeId}`;
+    if (arrivalAnnouncedRef.current === key) return;
+    arrivalAnnouncedRef.current = key;
+
+    const mapObj = getLocationMap(state, currentVisitor.locationId);
+    const destNode = getNode(mapObj, currentVisitor.destinationNodeId);
+    const destLabel = destNode?.label || t('visitor.nav.destination');
+
+    setArrivalToast({
+      title: t('visitor.nav.arrived.title'),
+      message: t('visitor.nav.arrived.message', { destination: destLabel }),
+    });
+
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        const ctx = new AudioCtx();
+        const playTone = (frequency, startOffset, duration) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = frequency;
+          gain.gain.setValueAtTime(0, ctx.currentTime + startOffset);
+          gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + startOffset + 0.02);
+          gain.gain.linearRampToValueAtTime(0, ctx.currentTime + startOffset + duration);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + startOffset);
+          osc.stop(ctx.currentTime + startOffset + duration + 0.05);
+        };
+        playTone(880, 0, 0.18);
+        playTone(1320, 0.2, 0.22);
+        setTimeout(() => ctx.close().catch(() => {}), 1200);
+      }
+    } catch {
+      // Audio not available — silently fall through to speech-only.
+    }
+
+    try {
+      const synth = window.speechSynthesis;
+      if (synth) {
+        synth.cancel();
+        const utter = new SpeechSynthesisUtterance(t('visitor.nav.arrived.spoken'));
+        utter.lang = language === 'fr' ? 'fr-FR' : language === 'rw' ? 'rw-RW' : 'en-US';
+        utter.rate = 1;
+        utter.pitch = 1;
+        synth.speak(utter);
+      }
+    } catch {
+      // Speech synthesis not supported — toast still appears.
+    }
+
+    const dismissTimer = setTimeout(() => setArrivalToast(null), 6000);
+    return () => clearTimeout(dismissTimer);
+  }, [
+    currentVisitor?.id,
+    currentVisitor?.currentNodeId,
+    currentVisitor?.destinationNodeId,
+    currentVisitor?.locationId,
+    state,
+    t,
+    language,
+  ]);
+
   if (!isReady) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-80px)] text-slate-500 dark:text-slate-400 text-sm">
-        Loading your route...
+        {t('visitor.nav.loading')}
       </div>
     );
   }
@@ -325,8 +403,8 @@ export default function MapNavigationPage() {
       })
     : [];
 
-  const destinationLabel = destinationNode?.label || routeFallbackNode?.label || 'Destination';
-  const currentNodeLabel = currentNode?.label || 'Current location';
+  const destinationLabel = destinationNode?.label || routeFallbackNode?.label || t('visitor.nav.destination');
+  const currentNodeLabel = currentNode?.label || t('visitor.nav.youAreHere');
   const totalSteps = liveSteps.length;
   const completedSteps = liveSteps.filter((step) => step.done).length;
   const remainingDistance = liveSteps
@@ -338,7 +416,7 @@ export default function MapNavigationPage() {
   const completedDistance = Math.max(0, totalRouteDistance - remainingDistance);
   const etaMinutes = Math.max(1, Math.round(remainingDistance / 70)); // ~70m/min walking pace
   const currentStep = liveSteps.find((step) => step.current) || liveSteps.find((step) => !step.done);
-  const corridorHint = currentStep?.text || 'Follow posted signage';
+  const corridorHint = currentStep?.text || t('visitor.nav.followSignage');
 
   const handleRecenterMap = () => {
     setActiveRail('map');
@@ -402,10 +480,10 @@ export default function MapNavigationPage() {
   };
 
   const railItems = [
-    { key: 'map', icon: <MapLucide size={18} />, label: 'Recenter map', onClick: handleRecenterMap },
-    { key: 'route', icon: <Route size={18} />, label: 'Focus route', onClick: handleFocusRoute },
-    { key: 'chat', icon: <MessageCircle size={18} />, label: 'Ask assistant', onClick: handleOpenChat },
-    { key: 'alerts', icon: <Bell size={18} />, label: 'Alerts & info', onClick: handleOpenAlerts },
+    { key: 'map', icon: <MapLucide size={18} />, label: t('visitor.nav.recenter'), onClick: handleRecenterMap },
+    { key: 'route', icon: <Route size={18} />, label: t('visitor.nav.focusRoute'), onClick: handleFocusRoute },
+    { key: 'chat', icon: <MessageCircle size={18} />, label: t('visitor.nav.askAssistant'), onClick: handleOpenChat },
+    { key: 'alerts', icon: <Bell size={18} />, label: t('visitor.nav.alerts'), onClick: handleOpenAlerts },
   ];
 
   return (
@@ -417,7 +495,7 @@ export default function MapNavigationPage() {
           <button
             type="button"
             onClick={handleScrollTop}
-            title="Scroll to top"
+            title={t('visitor.nav.scrollTop')}
             className="w-11 h-11 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 flex items-center justify-center shadow-md shadow-red-500/30 mb-2 hover:scale-105 transition-transform"
           >
             <ShieldCheck size={20} className="text-white" strokeWidth={2.4} />
@@ -448,8 +526,8 @@ export default function MapNavigationPage() {
         <div className="absolute top-4 right-4 z-[650] flex gap-2">
           <button
             onClick={() => setIsSimulating((prev) => !prev)}
-            aria-label={isSimulating ? 'Stop simulated walk' : 'Start simulated walk'}
-            title={isSimulating ? 'Stop simulated walk' : 'Simulate walking the route (demo)'}
+            aria-label={isSimulating ? t('visitor.nav.simStop') : t('visitor.nav.simStart')}
+            title={isSimulating ? t('visitor.nav.simStop') : t('visitor.nav.simStart')}
             className={`p-2.5 rounded-xl shadow-lg border transition-colors ${
               isSimulating
                 ? 'bg-[var(--color-brand-terracotta)] dark:bg-red-500 border-transparent text-white'
@@ -512,7 +590,7 @@ export default function MapNavigationPage() {
           {isValidLatLng(visitorPosition) && (
             <Marker position={visitorPosition} icon={activePersonIcon}>
               <Popup>
-                <div className="text-center font-bold">You are here</div>
+                <div className="text-center font-bold">{t('visitor.nav.youAreHere')}</div>
               </Popup>
             </Marker>
           )}
@@ -533,7 +611,7 @@ export default function MapNavigationPage() {
             <MapPin size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{currentNodeLabel}</span>
             <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{Math.round(remainingDistance)}m away</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('visitor.nav.metersAway', { meters: Math.round(remainingDistance) })}</span>
           </div>
         )}
       </div>
@@ -548,13 +626,13 @@ export default function MapNavigationPage() {
                 <div className="w-8 h-8 rounded-lg bg-red-50 dark:bg-red-500/10 text-[var(--color-brand-terracotta)] dark:text-red-400 flex items-center justify-center">
                   <Route size={16} strokeWidth={2.5} />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Route Instructions</h3>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('visitor.nav.routeInstructions')}</h3>
               </div>
               <button
                 onClick={() => navigate('/visit/checkout')}
                 className="text-xs font-bold bg-white dark:bg-slate-100 text-slate-900 px-4 py-2 rounded-lg shadow-sm hover:scale-105 transition-transform border border-slate-200 dark:border-transparent"
               >
-                End Visit
+                {t('visitor.nav.endVisit')}
               </button>
             </div>
 
@@ -576,7 +654,7 @@ export default function MapNavigationPage() {
                         <p className={`font-semibold ${step.current ? 'text-base' : 'text-sm'}`}>{step.text}</p>
                         {step.distance > 0 && (
                           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mt-1">
-                            {step.distance} meters
+                            {t('visitor.nav.metersAway', { meters: step.distance })}
                           </p>
                         )}
                       </div>
@@ -584,7 +662,7 @@ export default function MapNavigationPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-slate-500 dark:text-slate-400 text-sm">No route instructions available. Please ask at the Reception desk.</p>
+                <p className="text-slate-500 dark:text-slate-400 text-sm">{t('visitor.nav.noRoute')}</p>
               )}
             </div>
           </div>
@@ -593,13 +671,13 @@ export default function MapNavigationPage() {
           <div className="flex flex-col gap-4 min-h-0">
             {/* Progress Card */}
             <div className="glass-card p-5 relative overflow-hidden">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Progress</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.progress')}</p>
               <div className="mt-1 flex items-baseline gap-1">
                 <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none">{progressPercent}</p>
                 <span className="text-lg font-bold text-slate-500 dark:text-slate-400">%</span>
               </div>
               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">
-                {Math.round(completedDistance)} of {Math.round(totalRouteDistance)} meters
+                {t('visitor.nav.metersOf', { done: Math.round(completedDistance), total: Math.round(totalRouteDistance) })}
               </p>
               <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden mt-3">
                 <div
@@ -611,10 +689,10 @@ export default function MapNavigationPage() {
 
             {/* ETA Card */}
             <div className="glass-card p-5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">ETA</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.eta')}</p>
               <div className="mt-1 flex items-baseline gap-1">
                 <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none">{etaMinutes}</p>
-                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">min</span>
+                <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{t('visitor.nav.min')}</span>
               </div>
               <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 truncate">
                 {corridorHint}
@@ -623,7 +701,7 @@ export default function MapNavigationPage() {
 
             {/* Destination Info Card */}
             <div className="glass-card p-5 flex-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">Destination</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-3">{t('visitor.nav.destination')}</p>
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 flex items-center justify-center flex-shrink-0 shadow-md shadow-red-500/20">
                   <Target size={18} className="text-white" strokeWidth={2.4} />
@@ -631,12 +709,16 @@ export default function MapNavigationPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{destinationLabel}</p>
                   <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                    {totalSteps} step{totalSteps === 1 ? '' : 's'} • {Math.round(totalRouteDistance)}m total
+                    {t('visitor.nav.totalSteps', {
+                      steps: totalSteps,
+                      plural: totalSteps === 1 ? '' : 's',
+                      meters: Math.round(totalRouteDistance),
+                    })}
                   </p>
                 </div>
               </div>
               <div className="mt-4 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Visitor</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.visitor')}</p>
                 <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate mt-0.5">{currentVisitor.name}</p>
               </div>
             </div>
@@ -645,6 +727,37 @@ export default function MapNavigationPage() {
       )}
 
       </div>
+
+      {/* Arrival Toast — fires once when the visitor reaches the destination */}
+      <AnimatePresence>
+        {arrivalToast && (
+          <motion.div
+            initial={{ y: -30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -30, opacity: 0 }}
+            transition={{ type: 'spring', damping: 22, stiffness: 280 }}
+            role="status"
+            aria-live="polite"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[800] flex items-start gap-3 px-5 py-4 max-w-sm w-[calc(100%-2rem)] rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-2xl border border-emerald-400/40"
+          >
+            <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 backdrop-blur-sm">
+              <PartyPopper size={22} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-extrabold tracking-tight">{arrivalToast.title}</p>
+              <p className="text-xs font-medium text-white/90 mt-0.5">{arrivalToast.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setArrivalToast(null)}
+              aria-label="Close"
+              className="text-white/80 hover:text-white transition-colors"
+            >
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Slide-Up Chat Component (controlled by rail, with its own floating launcher) */}
       <AIChatbot
@@ -678,8 +791,8 @@ export default function MapNavigationPage() {
                     <AlertTriangle size={20} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg leading-tight">Alerts & Info</h3>
-                    <p className="text-xs text-slate-200/80 font-medium">Your current visit</p>
+                    <h3 className="font-bold text-lg leading-tight">{t('visitor.nav.alerts')}</h3>
+                    <p className="text-xs text-slate-200/80 font-medium">{t('visitor.nav.alerts.your')}</p>
                   </div>
                 </div>
                 <button
@@ -693,7 +806,7 @@ export default function MapNavigationPage() {
 
               <div className="p-5 space-y-4">
                 <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Visitor</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.visitor')}</p>
                   <div className="mt-2 flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 dark:from-slate-200 dark:to-slate-400 flex items-center justify-center text-white dark:text-slate-900">
                       <User size={16} />
@@ -701,30 +814,30 @@ export default function MapNavigationPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">{currentVisitor.name}</p>
                       <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate">
-                        {location?.name || 'On site'}
+                        {location?.name || t('visitor.nav.alerts.onSite')}
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">Destination</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.destination')}</p>
                   <p className="mt-1 text-sm font-bold text-slate-900 dark:text-slate-100">{destinationLabel}</p>
                   <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                    {Math.round(remainingDistance)}m remaining • ~{etaMinutes} min
+                    {t('visitor.nav.alerts.remaining', { meters: Math.round(remainingDistance), minutes: etaMinutes })}
                   </p>
                 </div>
 
                 <div className="rounded-2xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-brand-terracotta)] dark:text-red-400">Emergency</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--color-brand-terracotta)] dark:text-red-400">{t('visitor.nav.alerts.emergency')}</p>
                   <p className="text-xs text-slate-600 dark:text-slate-300 mt-1">
-                    If you feel unsafe or lost, contact Reception immediately.
+                    {t('visitor.nav.alerts.emergencyText')}
                   </p>
                   <a
                     href="tel:+250788000000"
                     className="mt-3 inline-flex items-center gap-2 text-xs font-bold bg-[var(--color-brand-terracotta)] dark:bg-red-500 text-white px-4 py-2 rounded-full shadow-sm hover:scale-105 transition-transform"
                   >
-                    <Phone size={14} /> Call Reception
+                    <Phone size={14} /> {t('visitor.nav.alerts.callReception')}
                   </a>
                 </div>
               </div>

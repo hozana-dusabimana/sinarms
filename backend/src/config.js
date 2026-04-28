@@ -40,6 +40,9 @@ module.exports = {
   jwtSecret: process.env.JWT_SECRET || 'sinarms-dev-secret',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  // Used by the QR generator to build a scannable URL pointing at the
+  // visitor portal. Falls back to corsOrigin so dev setups Just Work.
+  frontendUrl: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   dbConfig: buildDbConfig(),
   migrationsDir: path.join(__dirname, 'data', 'migrations'),
 };

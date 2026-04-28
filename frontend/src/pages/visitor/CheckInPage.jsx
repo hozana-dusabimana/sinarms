@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, User, Hash, ArrowRight, Loader } from 'lucide-react';
+import { MapPin, User, Hash, ArrowRight, Loader, QrCode } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function CheckInPage() {
   const navigate = useNavigate();
-  const { state, classifyVisitorDestination, registerVisitor } = useSinarms();
-  const [lang, setLang] = useState('EN');
+  const { state, classifyVisitorDestination, registerVisitor, qrCheckin, isReady } = useSinarms();
+  const { language, languages, setLanguage, t } = useLanguage();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [selectedDestination, setSelectedDestination] = useState('');
+  const [qrStatus, setQrStatus] = useState(null);
+  const qrAttemptRef = useRef(false);
 
   const activeOrganization =
     state.organizations.find((organization) => organization.status === 'active') || state.organizations[0] || null;
@@ -50,15 +54,47 @@ export default function CheckInPage() {
       .map((node) => ({ value: node.id, label: node.label }));
   }, [selectedLocationId, state.maps]);
 
+  // QR scan flow: when the visitor lands on /visit?qr=<token>&location=<id>,
+  // skip the form entirely and create the visit straight away. Once it
+  // succeeds we navigate to the map dashboard. We strip the query params
+  // afterwards so a manual reload doesn't re-attempt the registration.
+  useEffect(() => {
+    if (!isReady) return;
+    if (qrAttemptRef.current) return;
+    const qrToken = searchParams.get('qr');
+    const qrLocationId = searchParams.get('location');
+    if (!qrToken || !qrLocationId) return;
+
+    qrAttemptRef.current = true;
+    setQrStatus({ kind: 'loading' });
+
+    qrCheckin({
+      qrToken,
+      locationId: qrLocationId,
+      language: language === 'fr' ? 'fr' : language === 'rw' ? 'rw' : 'en',
+    })
+      .then((visitor) => {
+        const next = new URLSearchParams(searchParams);
+        next.delete('qr');
+        next.delete('location');
+        setSearchParams(next, { replace: true });
+        navigate('/visit/navigate', { state: { visitorId: visitor.id }, replace: true });
+      })
+      .catch(() => {
+        setQrStatus({ kind: 'error' });
+        qrAttemptRef.current = false;
+      });
+  }, [isReady, searchParams, qrCheckin, navigate, setSearchParams, language]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsProcessing(true);
-    
-    const language = lang === 'FR' ? 'fr' : lang === 'RW' ? 'rw' : 'en';
+
+    const apiLanguage = language === 'fr' ? 'fr' : language === 'rw' ? 'rw' : 'en';
 
     if (!selectedOrganization || !selectedLocation) {
       setIsProcessing(false);
-      window.alert('System is still loading locations. Please try again.');
+      window.alert(t('visitor.checkin.loading'));
       return;
     }
 
@@ -71,11 +107,11 @@ export default function CheckInPage() {
         const decision = await classifyVisitorDestination({
           locationId: selectedLocation.id,
           destinationText: formData.destination,
-          language,
+          language: apiLanguage,
         });
 
         if (decision.status === 'retry') {
-          window.alert(decision.message || 'We could not find that destination. Please describe it differently.');
+          window.alert(decision.message || t('visitor.checkin.notFound'));
           return;
         }
 
@@ -85,7 +121,7 @@ export default function CheckInPage() {
             : decision.alternatives?.[0]?.nodeId || null;
 
         if (!destinationNodeId) {
-          window.alert(decision.message || 'We could not find that destination. Please describe it differently.');
+          window.alert(decision.message || t('visitor.checkin.notFound'));
           return;
         }
       }
@@ -97,7 +133,7 @@ export default function CheckInPage() {
           selectedDestination && selectedDestination !== 'other'
             ? destinationOptions.find((option) => option.value === selectedDestination)?.label || formData.destination
             : formData.destination,
-        language,
+        language: apiLanguage,
         organizationId: selectedOrganization.id,
         locationId: selectedLocation.id,
         source: 'self',
@@ -106,38 +142,50 @@ export default function CheckInPage() {
 
       navigate('/visit/navigate', { state: { visitorId: visitor.id } });
     } catch (err) {
-      window.alert(err?.message || 'Unable to start navigation right now.');
+      window.alert(err?.message || t('visitor.checkin.unable'));
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const translations = {
-    EN: { title: "Welcome to Ruliba", subtitle: "Please check in to start your visit.", dest: "Where are you going?", placeholder: "e.g. Finance Office, HR Manager" },
-    FR: { title: "Bienvenue à Ruliba", subtitle: "Veuillez vous enregistrer pour commencer.", dest: "Où allez-vous?", placeholder: "ex: Bureau des finances, DRH" },
-    RW: { title: "Ikaze muri Ruliba", subtitle: "Iyandikishe mbere yo kwinjira.", dest: "Ugiye he?", placeholder: "Urugero: Ibiro by'imari, HR" }
-  };
-
-  const t = translations[lang];
+  if (qrStatus?.kind === 'loading') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] w-full">
+        <div className="w-16 h-16 mb-6 rounded-2xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-500 flex items-center justify-center shadow-lg shadow-red-500/20">
+          <QrCode size={32} className="text-white" />
+        </div>
+        <Loader className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400 mb-3" size={28} />
+        <p className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide">
+          {t('visitor.checkin.qrLoading')}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center w-full min-h-[80vh] pt-4">
       {/* Language Toggle */}
       <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-full mb-10 backdrop-blur-md shadow-inner border border-white/40 dark:border-slate-700/50">
-        {['EN', 'FR', 'RW'].map((l) => (
+        {languages.map((code) => (
           <button
-            key={l}
-            onClick={() => setLang(l)}
+            key={code}
+            onClick={() => setLanguage(code)}
             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${
-              lang === l ? 'bg-white dark:bg-slate-700 shadow-md text-[var(--color-brand-terracotta)] dark:text-red-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              language === code ? 'bg-white dark:bg-slate-700 shadow-md text-[var(--color-brand-terracotta)] dark:text-red-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
             }`}
           >
-            {l}
+            {code.toUpperCase()}
           </button>
         ))}
       </div>
 
-      <motion.div 
+      {qrStatus?.kind === 'error' && (
+        <div className="w-full max-w-md mx-auto mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm font-semibold text-red-700 dark:text-red-300">
+          {t('visitor.checkin.qrFailed')}
+        </div>
+      )}
+
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-md mx-auto glass-card p-6 sm:p-8"
@@ -146,13 +194,15 @@ export default function CheckInPage() {
           <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-500 rounded-2xl shadow-lg shadow-red-500/20 flex items-center justify-center mb-4 transform -rotate-3 hover:rotate-0 transition-transform">
             <MapPin size={32} className="text-white" />
           </div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100">{t.title}</h2>
-          <p className="text-sm tracking-wide text-slate-500 dark:text-slate-400 mt-2">{t.subtitle}</p>
+          <h2 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100">
+            {t('visitor.checkin.title', { org: selectedOrganization?.name || 'SINARMS' })}
+          </h2>
+          <p className="text-sm tracking-wide text-slate-500 dark:text-slate-400 mt-2">{t('visitor.checkin.subtitle')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Location</label>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.location')}</label>
             <div className="relative group">
               <select
                 value={selectedLocationId}
@@ -179,11 +229,11 @@ export default function CheckInPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.fullName')}</label>
             <div className="relative group">
               <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)] transition-colors" />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
                 value={formData.name}
@@ -193,11 +243,11 @@ export default function CheckInPage() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">ID or Phone</label>
+            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.idOrPhone')}</label>
             <div className="relative group">
               <Hash size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)] transition-colors" />
-              <input 
-                type="text" 
+              <input
+                type="text"
                 required
                 className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
                 value={formData.idOrPhone}
@@ -207,7 +257,7 @@ export default function CheckInPage() {
           </div>
 
           <div className="space-y-1 pt-2">
-            <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t.dest}</label>
+            <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t('visitor.checkin.dest')}</label>
             <select
               value={selectedDestination}
               onChange={(e) => {
@@ -224,21 +274,21 @@ export default function CheckInPage() {
               required
             >
               <option value="" disabled>
-                Select a destination...
+                {t('visitor.checkin.selectDest')}
               </option>
               {destinationOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
-              <option value="other">Other (type it)</option>
+              <option value="other">{t('visitor.checkin.other')}</option>
             </select>
 
             {selectedDestination === 'other' ? (
               <textarea
                 required
                 rows={3}
-                placeholder={t.placeholder}
+                placeholder={t('visitor.checkin.destPlaceholder')}
                 className="mt-3 w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
                 value={formData.destination}
                 onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
@@ -256,7 +306,7 @@ export default function CheckInPage() {
               >
                 <Loader className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400" size={24} />
                 <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide">
-                  Analyzing destination...
+                  {t('visitor.checkin.analyzing')}
                 </span>
               </motion.div>
             ) : (
@@ -268,7 +318,7 @@ export default function CheckInPage() {
                 type="submit"
                 className="w-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white font-bold py-4 rounded-xl shadow-lg shadow-red-500/30 flex items-center justify-center gap-2 transition-all group"
               >
-                Start Navigation
+                {t('visitor.checkin.start')}
                 <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
               </motion.button>
             )}
