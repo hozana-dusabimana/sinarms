@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { MapPin, Users, Shield, ArrowRight, Activity, Globe2, Building2, Cpu, Network, Lock, Zap, Bot, Database, CheckCircle2, Twitter, Linkedin, Github, Mail, Phone } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
+import { useLanguage } from '../context/LanguageContext';
 
 const activePersonIcon = L.divIcon({
   className: 'bg-transparent',
@@ -49,6 +50,7 @@ const KIGALI_ROUTE = [
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const { t, label: languageLabel, cycleLanguage } = useLanguage();
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -140,37 +142,45 @@ export default function LandingPage() {
             <div className="leading-tight">
               <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white">SINARMS</h1>
               <p className="text-[9px] font-bold uppercase tracking-widest text-[var(--color-brand-terracotta)] dark:text-red-400">
-                Smart Navigation
+                {t('landing.brand.tagline')}
               </p>
             </div>
           </a>
 
           <nav className="hidden md:flex items-center gap-1">
             <a href="#showcase" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              Showcase
+              {t('landing.nav.showcase')}
             </a>
             <a href="#features" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              Features
+              {t('landing.nav.features')}
             </a>
             <a href="#cta" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              Get Started
+              {t('landing.nav.getStarted')}
             </a>
           </nav>
 
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={cycleLanguage}
+              aria-label="Change language"
+              className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+            >
+              <Globe2 size={14} /> {languageLabel}
+            </button>
+            <button
+              type="button"
               onClick={() => navigate('/staff/login')}
               className="hidden sm:inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
             >
-              <Shield size={14} /> Staff Login
+              <Shield size={14} /> {t('landing.nav.staffLogin')}
             </button>
             <button
               type="button"
               onClick={() => navigate('/visit')}
               className="inline-flex items-center gap-1.5 h-9 px-4 rounded-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 text-xs font-bold text-white hover:brightness-110 transition-all shadow-md shadow-red-500/30"
             >
-              <Globe2 size={14} /> Visitor Portal
+              <Globe2 size={14} /> {t('landing.nav.visitorPortal')}
             </button>
           </div>
         </div>
@@ -191,18 +201,18 @@ export default function LandingPage() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
             </span>
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 tracking-widest uppercase">System Online V1.0</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 tracking-widest uppercase">{t('landing.hero.statusOnline')}</span>
           </motion.div>
 
           <motion.h1 variants={itemVariants} className="text-5xl lg:text-7xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.1] mb-6 drop-shadow-sm">
-            Smart Facility <br/>
+            {t('landing.hero.titleA')} <br/>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-terracotta)] via-red-500 to-orange-500">
-              Intelligence
+              {t('landing.hero.titleB')}
             </span>
           </motion.h1>
-          
+
           <motion.p variants={itemVariants} className="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed max-w-xl">
-            Welcome to the Smart Institutional Navigation and Resource Mapping System (SINARMS). The definitive solution for enterprise-grade visitor tracking, dynamic wayfinding, and real-time facility mapping.
+            {t('landing.hero.description')}
           </motion.p>
 
           <motion.div variants={containerVariants} className="grid sm:grid-cols-2 gap-6 w-full max-w-xl">
@@ -219,11 +229,11 @@ export default function LandingPage() {
                 <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4 text-[var(--color-brand-terracotta)] dark:text-red-400 group-hover:bg-[var(--color-brand-terracotta)] group-hover:text-white dark:group-hover:bg-red-500 transition-colors">
                   <Globe2 size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Visitor Portal</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Self-service check-in, AI assistance, and interactive indoor routing.</p>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('landing.hero.visitorCardTitle')}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">{t('landing.hero.visitorCardDesc')}</p>
               </div>
               <div className="mt-6 flex items-center text-sm font-bold text-[var(--color-brand-terracotta)] dark:text-red-400 group-hover:translate-x-2 transition-transform">
-                Start Visit <ArrowRight size={16} className="ml-2" />
+                {t('landing.hero.visitorCardCta')} <ArrowRight size={16} className="ml-2" />
               </div>
             </motion.div>
 
@@ -239,11 +249,11 @@ export default function LandingPage() {
                 <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center mb-4 text-[var(--color-brand-terracotta)] dark:text-red-400 group-hover:bg-[var(--color-brand-terracotta)] group-hover:text-white dark:group-hover:bg-red-500 transition-colors">
                   <Shield size={24} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Staff Portal</h3>
-                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Real-time facility monitoring, layout editing, and analytics.</p>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{t('landing.hero.staffCardTitle')}</h3>
+                <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">{t('landing.hero.staffCardDesc')}</p>
               </div>
               <div className="mt-6 flex items-center text-sm font-bold text-[var(--color-brand-terracotta)] dark:text-red-400 group-hover:translate-x-2 transition-transform">
-                Staff Login <ArrowRight size={16} className="ml-2" />
+                {t('landing.hero.staffCardCta')} <ArrowRight size={16} className="ml-2" />
               </div>
             </motion.div>
 
@@ -317,8 +327,8 @@ export default function LandingPage() {
                 <Activity size={20} />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Live Traffic</p>
-                <p className="text-lg font-black text-slate-900 dark:text-white">Active</p>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('landing.hero.liveTraffic')}</p>
+                <p className="text-lg font-black text-slate-900 dark:text-white">{t('landing.hero.active')}</p>
               </div>
             </motion.div>
 
@@ -331,8 +341,8 @@ export default function LandingPage() {
                 <Users size={20} />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Current Visitors</p>
-                <p className="text-lg font-black text-slate-900 dark:text-white">124 Checked In</p>
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('landing.hero.currentVisitors')}</p>
+                <p className="text-lg font-black text-slate-900 dark:text-white">{t('landing.hero.checkedIn')}</p>
               </div>
             </motion.div>
             
@@ -352,7 +362,7 @@ export default function LandingPage() {
       <div className="absolute top-[calc(100vh-80px)] right-8 hidden flex-col lg:flex items-end gap-1 opacity-50 z-10 hover:opacity-100 transition-opacity cursor-default">
         <div className="flex items-center gap-3">
           <Building2 size={24} className="text-slate-900 dark:text-white" />
-          <span className="font-bold text-slate-900 dark:text-white uppercase tracking-widest text-sm">Powered by Ruliba Clays</span>
+          <span className="font-bold text-slate-900 dark:text-white uppercase tracking-widest text-sm">{t('landing.hero.poweredBy')}</span>
         </div>
       </div>
       
@@ -367,24 +377,24 @@ export default function LandingPage() {
               <img src="/images/office_interior.png" alt="Luxurious Office Lobby" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-700" />
             </motion.div>
             <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true, margin: "-100px" }} className="order-1 lg:order-2">
-              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white mb-6 leading-[1.15] tracking-tight">Elevate Your First <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-500">Impression</span></h2>
-              <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">Transform your reception geometry into a state-of-the-art technological hub. Our smart mobile-first check-in flows and invisible geofencing checkpoints blend seamlessly into premium corporate environments.</p>
+              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white mb-6 leading-[1.15] tracking-tight">{t('landing.showcase1.titleA')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-500">{t('landing.showcase1.titleB')}</span></h2>
+              <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">{t('landing.showcase1.description')}</p>
               <ul className="space-y-4 text-slate-700 dark:text-slate-300 font-bold">
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> Zero paper logs</li>
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> VIP preregistration tracking</li>
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> Instant host notifications</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> {t('landing.showcase1.bullet1')}</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> {t('landing.showcase1.bullet2')}</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-[var(--color-brand-terracotta)]" size={20}/> {t('landing.showcase1.bullet3')}</li>
               </ul>
             </motion.div>
           </div>
 
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
             <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true, margin: "-100px" }}>
-              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white mb-6 leading-[1.15] tracking-tight">Command Center <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-500">Telemetry</span></h2>
-              <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">Empower your security and administrative teams with dark-mode optimized, high-density analytics dashboards. Monitor tracking anomalies and visitor flow in real-time across your entire physical estate.</p>
+              <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white mb-6 leading-[1.15] tracking-tight">{t('landing.showcase2.titleA')} <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-500">{t('landing.showcase2.titleB')}</span></h2>
+              <p className="text-lg text-slate-600 dark:text-slate-400 mb-8 leading-relaxed">{t('landing.showcase2.description')}</p>
               <ul className="space-y-4 text-slate-700 dark:text-slate-300 font-bold">
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> Graph-based anomaly detection</li>
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> Realtime heatmapping grids</li>
-                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> Multi-facility synchronization</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> {t('landing.showcase2.bullet1')}</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> {t('landing.showcase2.bullet2')}</li>
+                <li className="flex items-center gap-3"><CheckCircle2 className="text-blue-500" size={20}/> {t('landing.showcase2.bullet3')}</li>
               </ul>
             </motion.div>
             <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true, margin: "-100px" }} className="relative rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-200/50 dark:border-slate-700/50 group aspect-[4/3]">
@@ -401,18 +411,18 @@ export default function LandingPage() {
       <div className="relative z-10 w-full bg-slate-100 dark:bg-[#060b14] border-t border-slate-200 dark:border-slate-800 py-32">
         <div className="container mx-auto px-6">
           <div className="text-center max-w-3xl mx-auto mb-20">
-            <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-6">Enterprise-Grade Architecture</h2>
-            <p className="text-lg text-slate-500 dark:text-slate-400">Engineered to handle high-traffic institutional environments. SINARMS provides a flawless, concurrent mapping and telemetry engine built for scale.</p>
+            <h2 className="text-4xl font-black text-slate-900 dark:text-white mb-6">{t('landing.features.title')}</h2>
+            <p className="text-lg text-slate-500 dark:text-slate-400">{t('landing.features.description')}</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { i: <Network size={32}/>, t: 'Dynamic WebSockets', d: 'Real-time bipartite socket connections tracking live device geolocations with sub-second latency across the facility grid.' },
-              { i: <Bot size={32}/>, t: 'MiniLM-L6-v2 AI', d: 'Native Natural Language Processing model deployed at the edge to instantly map visitor intent to the exact internal node coordinate.' },
-              { i: <Shield size={32}/>, t: 'RBAC Security', d: 'Military-grade Role-Based Access Control enforcing deep permission layering between super-admins, receptionists, and active visitors.' },
-              { i: <Database size={32}/>, t: 'Graph-based Routing', d: 'Custom Dijkstra graph architecture navigating complex multidimensional floorplans over React-Leaflet GIS layers.' },
-              { i: <Cpu size={32}/>, t: 'Headless Scalability', d: 'Decoupled Vite/React rendering engine asynchronously feeding off a high-throughput Node/Python microservice backbone.' },
-              { i: <Zap size={32}/>, t: '60fps Micro-interactions', d: 'Hardware-accelerated Framer Motion physics ensuring the interface feels entirely organic and physically present.' }
+              { i: <Network size={32}/>, t: t('landing.features.f1.title'), d: t('landing.features.f1.desc') },
+              { i: <Bot size={32}/>, t: t('landing.features.f2.title'), d: t('landing.features.f2.desc') },
+              { i: <Shield size={32}/>, t: t('landing.features.f3.title'), d: t('landing.features.f3.desc') },
+              { i: <Database size={32}/>, t: t('landing.features.f4.title'), d: t('landing.features.f4.desc') },
+              { i: <Cpu size={32}/>, t: t('landing.features.f5.title'), d: t('landing.features.f5.desc') },
+              { i: <Zap size={32}/>, t: t('landing.features.f6.title'), d: t('landing.features.f6.desc') },
             ].map((feat, idx) => (
               <motion.div 
                 key={idx}
@@ -445,20 +455,20 @@ export default function LandingPage() {
 
         <div className="relative container mx-auto px-6 py-40 text-center z-10 flex flex-col items-center">
           <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-5xl md:text-7xl font-black text-white mb-8 tracking-tight drop-shadow-2xl">Ready to map your <span className="text-[var(--color-brand-terracotta)]">world?</span></h2>
-            <p className="text-xl text-slate-300 font-medium mb-12 max-w-2xl mx-auto drop-shadow-md">Deploy SINARMS across your private infrastructure in under 15 minutes.</p>
+            <h2 className="text-5xl md:text-7xl font-black text-white mb-8 tracking-tight drop-shadow-2xl">{t('landing.cta.titleA')} <span className="text-[var(--color-brand-terracotta)]">{t('landing.cta.titleB')}</span></h2>
+            <p className="text-xl text-slate-300 font-medium mb-12 max-w-2xl mx-auto drop-shadow-md">{t('landing.cta.description')}</p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button 
+              <button
                 onClick={() => navigate('/staff/login')}
                 className="px-8 py-4 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-lg shadow-red-500/30 hover:shadow-red-500/50 hover:bg-red-600 hover:scale-105 transition-all w-full sm:w-auto flex items-center justify-center gap-2 group"
               >
-                Access Reception Console <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                {t('landing.cta.staffBtn')} <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </button>
-              <button 
+              <button
                 onClick={() => navigate('/visit')}
                 className="px-8 py-4 rounded-xl bg-white/10 backdrop-blur-md text-white border border-white/20 font-bold hover:bg-white/20 hover:scale-105 transition-all w-full sm:w-auto"
               >
-                View Demo Run
+                {t('landing.cta.demoBtn')}
               </button>
             </div>
           </motion.div>
@@ -476,7 +486,7 @@ export default function LandingPage() {
                 <span className="text-xl font-bold tracking-widest text-white">SINARMS</span>
               </div>
               <p className="text-slate-400/80 mb-8 leading-relaxed max-w-sm">
-                The Smart Institutional Navigation and Resource Mapping System. Engineered for enterprise-grade visitor tracking and dynamic indoor wayfinding.
+                {t('landing.footer.tagline')}
               </p>
               <div className="flex items-center gap-5 text-slate-500">
                 <a href="#" className="p-2 bg-slate-900 rounded-full hover:bg-[var(--color-brand-terracotta)] hover:text-white transition-colors"><Twitter size={18}/></a>
@@ -486,27 +496,27 @@ export default function LandingPage() {
             </div>
             
             <div>
-              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">Platform</h4>
+              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">{t('landing.footer.platform')}</h4>
               <ul className="space-y-4 text-slate-400">
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">Visitor Management</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">Indoor Navigation</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">Telemetry Engine</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">API Documentation</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.platform1')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.platform2')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.platform3')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.platform4')}</a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">Company</h4>
+              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">{t('landing.footer.company')}</h4>
               <ul className="space-y-4 text-slate-400">
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">About Ruliba</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">Careers</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">Partner Network</a></li>
-                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">System Status</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.company1')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.company2')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.company3')}</a></li>
+                <li><a href="#" className="hover:text-[var(--color-brand-terracotta)] transition-colors">{t('landing.footer.company4')}</a></li>
               </ul>
             </div>
 
             <div>
-              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">Contact</h4>
+              <h4 className="text-white font-bold tracking-widest uppercase text-sm mb-6 pl-1 border-l-2 border-[var(--color-brand-terracotta)]">{t('landing.footer.contact')}</h4>
               <ul className="space-y-4 text-slate-400">
                 <li className="flex items-center gap-3"><Mail size={16} className="text-[var(--color-brand-terracotta)]"/> hello@sinarms.com</li>
                 <li className="flex items-center gap-3"><Phone size={16} className="text-[var(--color-brand-terracotta)]"/> +250 788 000 000</li>
@@ -516,11 +526,11 @@ export default function LandingPage() {
           </div>
           
           <div className="border-t border-slate-900 pt-8 flex flex-col md:flex-row items-center justify-between text-sm text-slate-500">
-            <p className="font-medium">&copy; {new Date().getFullYear()} SINARMS Technology. All rights reserved.</p>
+            <p className="font-medium">{t('landing.footer.copyright', { year: new Date().getFullYear() })}</p>
             <div className="flex items-center gap-8 mt-4 md:mt-0 font-medium">
-              <a href="#" className="hover:text-white transition-colors">Privacy</a>
-              <a href="#" className="hover:text-white transition-colors">Terms</a>
-              <a href="#" className="hover:text-white transition-colors">Cookies</a>
+              <a href="#" className="hover:text-white transition-colors">{t('landing.footer.privacy')}</a>
+              <a href="#" className="hover:text-white transition-colors">{t('landing.footer.terms')}</a>
+              <a href="#" className="hover:text-white transition-colors">{t('landing.footer.cookies')}</a>
             </div>
           </div>
         </div>

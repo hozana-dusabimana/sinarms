@@ -4,6 +4,7 @@ import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Acti
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
 
 // Leaflet default icon fix
@@ -98,6 +99,7 @@ function FitBounds({ positions }) {
 
 export default function DashboardPage() {
   const { state, analytics, currentUser, activeAlerts, acknowledgeAlert, checkoutVisitor, registerVisitor } = useSinarms();
+  const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState('list');
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
   const [manualName, setManualName] = useState('');
@@ -155,33 +157,33 @@ export default function DashboardPage() {
 
   function alertAge(alert) {
     const minutes = minutesBetween(alert.triggeredAt);
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 60) return t('staff.dashboard.minutesAgo', { n: minutes });
     const hours = Math.round(minutes / 60);
-    return `${hours}h ago`;
+    return t('staff.dashboard.hoursAgo', { n: hours });
   }
 
   const stats = [
     {
-      label: 'Active Visitors',
+      label: t('staff.dashboard.stat.activeVisitors'),
       value: activeVisitors.length.toString(),
       icon: <UserCheck className="w-6 h-6" />,
       color: 'bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400',
     },
     {
-      label: 'Total Today',
+      label: t('staff.dashboard.stat.totalToday'),
       value: (analytics?.totalVisitors ?? 0).toString(),
       icon: <Users className="w-6 h-6" />,
       color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
     },
     {
-      label: 'Active Alerts',
+      label: t('staff.dashboard.stat.activeAlerts'),
       value: activeAlerts.length.toString(),
       icon: <ShieldAlert className="w-6 h-6" />,
       color: 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400',
       alert: activeAlerts.length > 0,
     },
     {
-      label: 'Avg Duration',
+      label: t('staff.dashboard.stat.avgDuration'),
       value: `${analytics?.averageDuration ?? 0}m`,
       icon: <Activity className="w-6 h-6" />,
       color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
@@ -192,22 +194,22 @@ export default function DashboardPage() {
     <div className="flex flex-col h-full gap-6">
       <div className="flex items-end justify-between mb-1 flex-wrap gap-4">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Live Operations</h2>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">{t('staff.dashboard.title')}</h2>
           <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">
-            {location?.name || 'Head Office'} • Active Shift • Real-time visitor tracking
+            {t('staff.dashboard.subtitle', { location: location?.name || t('staff.dashboard.fallbackLocation') })}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2 bg-white dark:bg-slate-800/60 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Live Sync</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{t('staff.dashboard.liveSync')}</span>
           </div>
           <button
             onClick={() => setIsRegistrationModalOpen(true)}
             className="bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:opacity-95 text-white px-5 py-2.5 rounded-xl shadow-md shadow-red-500/20 transition-all font-bold flex items-center gap-2"
           >
             <Users size={18} />
-            <span className="hidden sm:inline">Manual Registration</span>
+            <span className="hidden sm:inline">{t('staff.dashboard.manualRegister')}</span>
           </button>
         </div>
       </div>
@@ -248,24 +250,24 @@ export default function DashboardPage() {
         <div className="lg:col-span-2 flex flex-col glass-card overflow-hidden">
           <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-[#0b101e]/50 backdrop-blur-md z-10 sticky top-0">
             <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
-              <button 
+              <button
                 onClick={() => setActiveTab('list')}
                 className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeTab === 'list' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-300'}`}
               >
-                <Users size={16} /> Directory
+                <Users size={16} /> {t('staff.dashboard.tab.directory')}
               </button>
-              <button 
+              <button
                 onClick={() => setActiveTab('map')}
                 className={`px-4 py-1.5 rounded-md text-sm font-bold transition-colors flex items-center gap-2 ${activeTab === 'map' ? 'bg-white dark:bg-slate-700 text-[var(--color-brand-terracotta)] dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-300'}`}
               >
-                <MapIcon size={16} /> Live Map
+                <MapIcon size={16} /> {t('staff.dashboard.tab.liveMap')}
               </button>
             </div>
-            
+
             {activeTab === 'list' && (
               <div className="relative w-48 sm:w-64">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder="Search visitors..." className="w-full bg-slate-100 dark:bg-slate-800/80 border-none rounded-full pl-9 pr-4 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200" />
+                <input type="text" placeholder={t('staff.dashboard.searchPlaceholder')} className="w-full bg-slate-100 dark:bg-slate-800/80 border-none rounded-full pl-9 pr-4 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200" />
               </div>
             )}
           </div>
@@ -336,7 +338,7 @@ export default function DashboardPage() {
                           <Marker position={destPos} icon={destinationPinIcon}>
                             <Popup>
                               <div className="text-center text-xs font-bold text-red-600">
-                                {destNode?.label || 'Destination'}
+                                {destNode?.label || t('staff.dashboard.popup.destination')}
                               </div>
                             </Popup>
                           </Marker>
@@ -361,11 +363,11 @@ export default function DashboardPage() {
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead className="bg-slate-100/80 dark:bg-[#0b101e]/80 backdrop-blur-md sticky top-0 z-10 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="px-6 py-4">Visitor</th>
-                      <th className="px-6 py-4">Destination</th>
-                      <th className="px-6 py-4">Current Zone</th>
-                      <th className="px-6 py-4">Duration</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
+                      <th className="px-6 py-4">{t('staff.dashboard.col.visitor')}</th>
+                      <th className="px-6 py-4">{t('staff.dashboard.col.destination')}</th>
+                      <th className="px-6 py-4">{t('staff.dashboard.col.currentZone')}</th>
+                      <th className="px-6 py-4">{t('staff.dashboard.col.duration')}</th>
+                      <th className="px-6 py-4 text-right">{t('staff.dashboard.col.actions')}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
@@ -394,7 +396,7 @@ export default function DashboardPage() {
                             {zoneLabel}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-mono text-sm text-slate-500 dark:text-slate-400">{duration} min</td>
+                        <td className="px-6 py-4 font-mono text-sm text-slate-500 dark:text-slate-400">{t('staff.dashboard.minutesShort', { n: duration })}</td>
                         <td className="px-6 py-4 text-right opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={async (e) => {
@@ -402,12 +404,12 @@ export default function DashboardPage() {
                               try {
                                 await checkoutVisitor(visitor.id, { manual: true });
                               } catch (error) {
-                                window.alert(error?.message || 'Unable to check out visitor.');
+                                window.alert(error?.message || t('staff.dashboard.errors.checkout'));
                               }
                             }}
                             className="text-sm font-bold text-[var(--color-brand-terracotta)] dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-3 py-1 bg-red-50 dark:bg-red-500/10 rounded-md"
                           >
-                            Check-Out
+                            {t('staff.dashboard.checkout')}
                           </button>
                         </td>
                       </tr>
@@ -427,7 +429,7 @@ export default function DashboardPage() {
             
             <div className="px-5 py-4 flex items-center justify-between border-b border-slate-200 dark:border-slate-800 relative z-10">
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                <ShieldAlert size={18} className="text-red-500" /> Security Alerts
+                <ShieldAlert size={18} className="text-red-500" /> {t('staff.dashboard.alerts.title')}
               </h3>
               <span className="bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{activeAlerts.length}</span>
             </div>
@@ -437,7 +439,7 @@ export default function DashboardPage() {
                 {activeAlerts.length === 0 ? (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-3 pb-8">
                     <ShieldAlert size={48} className="opacity-20" />
-                    <p className="font-bold">No active alerts</p>
+                    <p className="font-bold">{t('staff.dashboard.alerts.empty')}</p>
                   </motion.div>
                 ) : (
                   activeAlerts.map((alert) => {
@@ -462,12 +464,12 @@ export default function DashboardPage() {
                           {alert.type.replace('_', ' ')}
                         </p>
                       </div>
-                      <button 
+                      <button
                         onClick={async () => {
                           try {
                             await acknowledgeAlert(alert.id);
                           } catch (error) {
-                            window.alert(error?.message || 'Unable to acknowledge alert.');
+                            window.alert(error?.message || t('staff.dashboard.errors.acknowledge'));
                           }
                         }}
                         className={`absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg opacity-0 group-hover:opacity-100 transition-all ${alert.severity === 'high' ? 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-500/30 dark:hover:bg-red-500/50 dark:text-red-300' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 dark:bg-yellow-500/30 dark:hover:bg-yellow-500/50 dark:text-yellow-300'}`}
@@ -486,20 +488,20 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <TrendingUp size={16} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
-                Today's Overview
+                {t('staff.dashboard.overview.title')}
               </h4>
             </div>
             <div className="space-y-3">
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Total Visitors</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('staff.dashboard.overview.totalVisitors')}</span>
                 <span className="text-lg font-extrabold text-slate-900 dark:text-white">{analytics.totalVisitors}</span>
               </div>
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Avg Duration</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('staff.dashboard.overview.avgDuration')}</span>
                 <span className="text-lg font-extrabold text-slate-900 dark:text-white">{analytics.averageDuration}m</span>
               </div>
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
-                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Currently On-Site</span>
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('staff.dashboard.overview.onSite')}</span>
                 <span className="text-lg font-extrabold text-slate-900 dark:text-white">{activeVisitors.length}</span>
               </div>
             </div>
@@ -519,39 +521,39 @@ export default function DashboardPage() {
               className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 dark:border-slate-800"
             >
               <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><Users size={18}/> Register Visitor</h3>
+                <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><Users size={18}/> {t('staff.dashboard.modal.title')}</h3>
                 <button onClick={() => setIsRegistrationModalOpen(false)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"><X size={20}/></button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Full Name</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.dashboard.modal.name')}</label>
                   <input
                     type="text"
                     value={manualName}
                     onChange={(e) => setManualName(e.target.value)}
-                    placeholder="Visitor Name"
+                    placeholder={t('staff.dashboard.modal.namePlaceholder')}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">ID or Phone</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.dashboard.modal.idOrPhone')}</label>
                   <input
                     type="text"
                     value={manualIdOrPhone}
                     onChange={(e) => setManualIdOrPhone(e.target.value)}
-                    placeholder="ID number or phone"
+                    placeholder={t('staff.dashboard.modal.idOrPhonePlaceholder')}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Destination</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.dashboard.modal.destination')}</label>
                   <select
                     value={manualDestinationNodeId}
                     onChange={(e) => setManualDestinationNodeId(e.target.value)}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
                   >
                     <option value="" disabled>
-                      Select destination...
+                      {t('staff.dashboard.modal.destinationPlaceholder')}
                     </option>
                     {destinationOptions.map((node) => (
                       <option key={node.id} value={node.id}>
@@ -561,39 +563,39 @@ export default function DashboardPage() {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Host Name (Optional)</label>
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.dashboard.modal.host')}</label>
                   <input
                     type="text"
                     value={manualHostName}
                     onChange={(e) => setManualHostName(e.target.value)}
-                    placeholder="Whom are they visiting?"
+                    placeholder={t('staff.dashboard.modal.hostPlaceholder')}
                     className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]"
                   />
                 </div>
                 <div className="pt-4 flex gap-3">
-                  <button onClick={() => setIsRegistrationModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button onClick={() => setIsRegistrationModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">{t('staff.dashboard.modal.cancel')}</button>
                   <button
                     onClick={async () => {
                       if (!currentUser?.organizationId || !currentUser?.locationId) {
-                        window.alert('Your account is not assigned to a location.');
+                        window.alert(t('staff.dashboard.errors.noLocation'));
                         return;
                       }
 
                       if (!manualName.trim() || !manualDestinationNodeId) {
-                        window.alert('Please provide the visitor name and destination.');
+                        window.alert(t('staff.dashboard.errors.required'));
                         return;
                       }
 
                       try {
                         const map = getLocationMap(state, currentUser.locationId);
                         const node = getNode(map, manualDestinationNodeId);
-                        const destinationText = node?.label || 'Destination';
+                        const destinationText = node?.label || t('staff.dashboard.popup.destination');
 
                         await registerVisitor({
                           name: manualName,
                           idOrPhone: manualIdOrPhone,
                           destinationText,
-                          language: 'en',
+                          language,
                           organizationId: currentUser.organizationId,
                           locationId: currentUser.locationId,
                           source: 'manual',
@@ -607,12 +609,12 @@ export default function DashboardPage() {
                         setManualDestinationNodeId('');
                         setManualHostName('');
                       } catch (error) {
-                        window.alert(error?.message || 'Unable to register visitor.');
+                        window.alert(error?.message || t('staff.dashboard.errors.register'));
                       }
                     }}
                     className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity"
                   >
-                    Confirm Registration
+                    {t('staff.dashboard.modal.confirm')}
                   </button>
                 </div>
               </div>

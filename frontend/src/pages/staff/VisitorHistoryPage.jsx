@@ -17,6 +17,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   formatDateTime,
   getLocationById,
@@ -24,19 +25,6 @@ import {
   getNode,
   getOrganizationById,
 } from '../../lib/sinarmsEngine';
-
-const RANGE_OPTIONS = [
-  { value: 'today', label: 'Today' },
-  { value: '7d', label: 'Last 7 days' },
-  { value: '30d', label: 'Last 30 days' },
-  { value: 'all', label: 'All time' },
-];
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'active', label: 'Active' },
-  { value: 'exited', label: 'Exited' },
-];
 
 function startOfDay(date) {
   const d = new Date(date);
@@ -99,8 +87,14 @@ function StatCard({ icon, label, value, tint = 'red' }) {
   );
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, t }) {
   const isActive = status === 'active';
+  const label =
+    status === 'active'
+      ? t('staff.history.status.active')
+      : status === 'exited'
+        ? t('staff.history.status.exited')
+        : t('staff.history.status.unknown');
   return (
     <span
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider border ${
@@ -114,13 +108,14 @@ function StatusPill({ status }) {
           isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
         }`}
       />
-      {status || 'unknown'}
+      {label}
     </span>
   );
 }
 
 export default function VisitorHistoryPage() {
   const { state, fetchVisitorHistory, currentUser } = useSinarms();
+  const { t } = useLanguage();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -129,6 +124,19 @@ export default function VisitorHistoryPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [selected, setSelected] = useState(null);
 
+  const RANGE_OPTIONS = [
+    { value: 'today', label: t('staff.history.range.today') },
+    { value: '7d', label: t('staff.history.range.7d') },
+    { value: '30d', label: t('staff.history.range.30d') },
+    { value: 'all', label: t('staff.history.range.all') },
+  ];
+
+  const STATUS_OPTIONS = [
+    { value: 'all', label: t('staff.history.status.all') },
+    { value: 'active', label: t('staff.history.status.active') },
+    { value: 'exited', label: t('staff.history.status.exited') },
+  ];
+
   const loadHistory = async () => {
     setLoading(true);
     setError(null);
@@ -136,7 +144,7 @@ export default function VisitorHistoryPage() {
       const data = await fetchVisitorHistory();
       setHistory(data);
     } catch (err) {
-      setError(err?.message || 'Failed to load visitor history.');
+      setError(err?.message || t('staff.history.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -228,7 +236,7 @@ export default function VisitorHistoryPage() {
     downloadCsv(`visitor-history-${new Date().toISOString().slice(0, 10)}.csv`, rows);
   };
 
-  const roleLabel = currentUser?.role === 'admin' ? 'Administrator' : 'Receptionist';
+  const roleLabel = currentUser?.role === 'admin' ? t('staff.layout.administrator') : t('staff.layout.receptionist');
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -239,13 +247,13 @@ export default function VisitorHistoryPage() {
           </div>
           <div>
             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
-              Visitor History
+              {t('staff.history.title')}
               <span className="bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300 text-xs font-black px-3 py-1 rounded-full uppercase tracking-widest border border-red-200 dark:border-red-500/30">
                 {roleLabel}
               </span>
             </h2>
             <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">
-              Complete record of past and current visitor sessions
+              {t('staff.history.subtitle')}
             </p>
           </div>
         </div>
@@ -256,7 +264,7 @@ export default function VisitorHistoryPage() {
             className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-xl transition-all font-bold flex items-center gap-2 shadow-sm disabled:opacity-60"
           >
             <RefreshCcw size={18} className={loading ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Refresh</span>
+            <span className="hidden sm:inline">{t('staff.history.refresh')}</span>
           </button>
           <button
             onClick={handleExport}
@@ -264,16 +272,16 @@ export default function VisitorHistoryPage() {
             className="bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 hover:opacity-90 text-white px-4 sm:px-6 py-2 rounded-xl shadow-md shadow-red-500/20 transition-all font-bold tracking-wide flex items-center gap-2 disabled:opacity-50"
           >
             <Download size={18} />
-            <span className="hidden sm:inline">Export CSV</span>
+            <span className="hidden sm:inline">{t('staff.history.export')}</span>
           </button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={<Users size={20} />} label="Total Visits" value={stats.total} tint="red" />
-        <StatCard icon={<UserCheck size={20} />} label="Active" value={stats.active} tint="green" />
-        <StatCard icon={<LogOutIcon size={20} />} label="Exited" value={stats.exited} tint="blue" />
-        <StatCard icon={<Clock size={20} />} label="Avg Duration" value={`${stats.avg}m`} tint="amber" />
+        <StatCard icon={<Users size={20} />} label={t('staff.history.totalVisits')} value={stats.total} tint="red" />
+        <StatCard icon={<UserCheck size={20} />} label={t('staff.history.active')} value={stats.active} tint="green" />
+        <StatCard icon={<LogOutIcon size={20} />} label={t('staff.history.exited')} value={stats.exited} tint="blue" />
+        <StatCard icon={<Clock size={20} />} label={t('staff.history.avgDuration')} value={`${stats.avg}m`} tint="amber" />
       </div>
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-sm">
@@ -285,7 +293,7 @@ export default function VisitorHistoryPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, phone, email, destination…"
+            placeholder={t('staff.history.searchPlaceholder')}
             className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-red-300 dark:focus:border-red-500/50 focus:bg-white dark:focus:bg-slate-900 outline-none text-sm font-medium placeholder:text-slate-400 dark:placeholder:text-slate-500 text-slate-800 dark:text-slate-100"
           />
         </div>
@@ -326,20 +334,20 @@ export default function VisitorHistoryPage() {
           <table className="w-full text-left border-collapse text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900 sticky top-0 z-10 uppercase tracking-widest text-[11px] text-slate-500 dark:text-slate-400 font-black border-b-2 border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="px-5 py-3.5">Visitor</th>
-                <th className="px-5 py-3.5">Destination</th>
-                <th className="px-5 py-3.5 hidden md:table-cell">Location</th>
-                <th className="px-5 py-3.5">Check-in</th>
-                <th className="px-5 py-3.5 hidden lg:table-cell">Check-out</th>
-                <th className="px-5 py-3.5 text-right">Duration</th>
-                <th className="px-5 py-3.5 text-right">Status</th>
+                <th className="px-5 py-3.5">{t('staff.history.col.visitor')}</th>
+                <th className="px-5 py-3.5">{t('staff.history.col.destination')}</th>
+                <th className="px-5 py-3.5 hidden md:table-cell">{t('staff.history.col.location')}</th>
+                <th className="px-5 py-3.5">{t('staff.history.col.checkin')}</th>
+                <th className="px-5 py-3.5 hidden lg:table-cell">{t('staff.history.col.checkout')}</th>
+                <th className="px-5 py-3.5 text-right">{t('staff.history.col.duration')}</th>
+                <th className="px-5 py-3.5 text-right">{t('staff.history.col.status')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
               {loading && (
                 <tr>
                   <td colSpan={7} className="px-5 py-10 text-center text-slate-500 dark:text-slate-400 font-medium">
-                    Loading visitor history…
+                    {t('staff.history.loading')}
                   </td>
                 </tr>
               )}
@@ -348,8 +356,8 @@ export default function VisitorHistoryPage() {
                   <td colSpan={7} className="px-5 py-12 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-500 dark:text-slate-400">
                       <History size={32} className="opacity-40" />
-                      <p className="font-bold text-slate-700 dark:text-slate-200">No visitors found</p>
-                      <p className="text-xs">Try adjusting your filters or date range.</p>
+                      <p className="font-bold text-slate-700 dark:text-slate-200">{t('staff.history.empty.title')}</p>
+                      <p className="text-xs">{t('staff.history.empty.subtitle')}</p>
                     </div>
                   </td>
                 </tr>
@@ -371,7 +379,7 @@ export default function VisitorHistoryPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-bold text-slate-900 dark:text-white truncate">
-                            {visitor.name || 'Unknown'}
+                            {visitor.name || t('staff.history.unknownVisitor')}
                           </p>
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                             {visitor.phone || visitor.email || visitor.id}
@@ -395,7 +403,7 @@ export default function VisitorHistoryPage() {
                       {visitor.durationMin ? `${visitor.durationMin}m` : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right">
-                      <StatusPill status={visitor.status} />
+                      <StatusPill status={visitor.status} t={t} />
                     </td>
                   </motion.tr>
                 ))}
@@ -404,7 +412,7 @@ export default function VisitorHistoryPage() {
         </div>
         {!loading && filtered.length > 0 && (
           <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Showing {filtered.length} of {enriched.length} visitors
+            {t('staff.history.showingCount', { filtered: filtered.length, total: enriched.length })}
           </div>
         )}
       </div>
@@ -432,10 +440,10 @@ export default function VisitorHistoryPage() {
                   </div>
                   <div className="min-w-0">
                     <p className="text-lg font-extrabold text-slate-900 dark:text-white truncate">
-                      {selected.name || 'Unknown Visitor'}
+                      {selected.name || t('staff.history.detail.unknownTitle')}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <StatusPill status={selected.status} />
+                      <StatusPill status={selected.status} t={t} />
                     </div>
                   </div>
                 </div>
@@ -447,30 +455,30 @@ export default function VisitorHistoryPage() {
                 </button>
               </div>
               <div className="p-5 space-y-3">
-                <DetailRow icon={<Phone size={15} />} label="Phone" value={selected.phone} />
-                <DetailRow icon={<Mail size={15} />} label="Email" value={selected.email} />
-                <DetailRow icon={<Building2 size={15} />} label="Organization" value={selected._orgName} />
-                <DetailRow icon={<MapPin size={15} />} label="Location" value={selected._locationName} />
-                <DetailRow icon={<MapPin size={15} />} label="Destination" value={selected._destinationLabel} />
+                <DetailRow icon={<Phone size={15} />} label={t('staff.history.detail.phone')} value={selected.phone} />
+                <DetailRow icon={<Mail size={15} />} label={t('staff.history.detail.email')} value={selected.email} />
+                <DetailRow icon={<Building2 size={15} />} label={t('staff.history.detail.organization')} value={selected._orgName} />
+                <DetailRow icon={<MapPin size={15} />} label={t('staff.history.detail.location')} value={selected._locationName} />
+                <DetailRow icon={<MapPin size={15} />} label={t('staff.history.detail.destination')} value={selected._destinationLabel} />
                 <DetailRow
                   icon={<Clock size={15} />}
-                  label="Checked in"
+                  label={t('staff.history.detail.checkedIn')}
                   value={selected.checkinTime ? formatDateTime(selected.checkinTime) : '—'}
                 />
                 <DetailRow
                   icon={<LogOutIcon size={15} />}
-                  label="Checked out"
-                  value={selected.checkoutTime ? formatDateTime(selected.checkoutTime) : 'Still on premises'}
+                  label={t('staff.history.detail.checkedOut')}
+                  value={selected.checkoutTime ? formatDateTime(selected.checkoutTime) : t('staff.history.detail.stillOnSite')}
                 />
                 <DetailRow
                   icon={<Clock size={15} />}
-                  label="Duration"
-                  value={selected.durationMin ? `${selected.durationMin} minutes` : '—'}
+                  label={t('staff.history.detail.duration')}
+                  value={selected.durationMin ? t('staff.history.detail.minutes', { n: selected.durationMin }) : '—'}
                 />
                 {selected.purpose && (
                   <div className="pt-2">
                     <p className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1">
-                      Purpose
+                      {t('staff.history.detail.purpose')}
                     </p>
                     <p className="text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3">
                       {selected.purpose}

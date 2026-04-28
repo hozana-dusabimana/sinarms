@@ -12,9 +12,11 @@ import {
   User,
   ShieldCheck,
   History,
+  Globe2,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSinarms } from '../context/SinarmsContext';
+import { useLanguage } from '../context/LanguageContext';
 import NotificationsPanel from '../components/common/NotificationsPanel';
 
 const READ_STORAGE_KEY = 'sinarms_staff_read_notifs';
@@ -45,6 +47,7 @@ export default function StaffLayout() {
   const userMenuRef = useRef(null);
   const navigate = useNavigate();
   const { currentUser, logout, activeAlerts = [], state, acknowledgeAlert } = useSinarms();
+  const { t, label: languageLabel, cycleLanguage } = useLanguage();
   const [readIds, setReadIds] = useState(loadReadIds);
 
   const notificationItems = useMemo(() => {
@@ -105,17 +108,17 @@ export default function StaffLayout() {
   };
 
   const role = currentUser?.role || localStorage.getItem('sinarms_role') || 'admin';
-  const displayName = currentUser?.name || currentUser?.email || (role === 'admin' ? 'Administrator' : 'Receptionist');
-  const roleLabel = role === 'admin' ? 'Administrator' : 'Receptionist';
+  const roleLabel = role === 'admin' ? t('staff.layout.administrator') : t('staff.layout.receptionist');
+  const displayName = currentUser?.name || currentUser?.email || roleLabel;
 
   const allNavItems = [
-    { label: 'Live Dashboard', path: '/staff/dashboard', icon: <LayoutDashboard size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
-    { label: 'Visitor History', path: '/staff/history', icon: <History size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
-    { label: 'Organizations', path: '/staff/organizations', icon: <Users size={20} className="flex-shrink-0" />, roles: ['admin'] },
-    { label: 'Analytics', path: '/staff/analytics', icon: <Activity size={20} className="flex-shrink-0" />, roles: ['admin'] },
-    { label: 'Users & Roles', path: '/staff/users', icon: <Users2 size={20} className="flex-shrink-0" />, roles: ['admin'] },
-    { label: 'FAQ Database', path: '/staff/faq', icon: <MessageSquare size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
-    { label: 'Audit Log', path: '/staff/audit-log', icon: <TerminalSquare size={20} className="flex-shrink-0" />, roles: ['admin'] },
+    { label: t('staff.nav.dashboard'), path: '/staff/dashboard', icon: <LayoutDashboard size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
+    { label: t('staff.nav.history'), path: '/staff/history', icon: <History size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
+    { label: t('staff.nav.organizations'), path: '/staff/organizations', icon: <Users size={20} className="flex-shrink-0" />, roles: ['admin'] },
+    { label: t('staff.nav.analytics'), path: '/staff/analytics', icon: <Activity size={20} className="flex-shrink-0" />, roles: ['admin'] },
+    { label: t('staff.nav.users'), path: '/staff/users', icon: <Users2 size={20} className="flex-shrink-0" />, roles: ['admin'] },
+    { label: t('staff.nav.faq'), path: '/staff/faq', icon: <MessageSquare size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
+    { label: t('staff.nav.audit'), path: '/staff/audit-log', icon: <TerminalSquare size={20} className="flex-shrink-0" />, roles: ['admin'] },
   ];
 
   const navItems = allNavItems.filter((item) => item.roles.includes(role));
@@ -174,7 +177,7 @@ export default function StaffLayout() {
               !isSidebarOpen && 'xl:hidden'
             }`}
           >
-            Management
+            {t('staff.layout.management')}
           </p>
           {navItems.map((item) => (
             <NavLink
@@ -204,13 +207,13 @@ export default function StaffLayout() {
         <div className="p-4 border-t border-slate-200/70 dark:border-slate-800/70">
           <button
             onClick={handleLogout}
-            title={!isSidebarOpen ? 'Sign Out' : ''}
+            title={!isSidebarOpen ? t('staff.layout.signOut') : ''}
             className={`flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-700 dark:hover:text-red-300 font-medium transition-colors ${
               !isSidebarOpen && 'xl:justify-center xl:px-0'
             }`}
           >
             <LogOut size={18} className="flex-shrink-0" />
-            <span className={`whitespace-nowrap ${!isSidebarOpen && 'xl:hidden'}`}>Sign Out</span>
+            <span className={`whitespace-nowrap ${!isSidebarOpen && 'xl:hidden'}`}>{t('staff.layout.signOut')}</span>
           </button>
         </div>
       </aside>
@@ -232,20 +235,28 @@ export default function StaffLayout() {
             </button>
             <div className="hidden sm:block pl-2">
               <p className="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                Workspace
+                {t('staff.layout.workspace')}
               </p>
               <p className="text-sm font-bold text-slate-800 dark:text-slate-200 leading-tight">
-                SINARMS Control Center
+                {t('staff.layout.controlCenter')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={cycleLanguage}
+              aria-label="Change language"
+              className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+            >
+              <Globe2 size={14} /> {languageLabel}
+            </button>
             <NotificationsPanel
               items={notificationItems}
               onClearAll={markAllRead}
               onDismiss={dismissOne}
-              label="Notifications"
+              label={t('staff.layout.notifications')}
             />
 
             <div className="relative" ref={userMenuRef}>
@@ -277,13 +288,13 @@ export default function StaffLayout() {
                         }}
                         className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium"
                       >
-                        <User size={14} /> Profile Details
+                        <User size={14} /> {t('staff.layout.profile')}
                       </button>
                       <button
                         onClick={handleLogout}
                         className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 font-medium"
                       >
-                        <LogOut size={14} /> Sign Out
+                        <LogOut size={14} /> {t('staff.layout.signOut')}
                       </button>
                     </div>
                   </div>

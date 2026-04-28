@@ -5,17 +5,70 @@ import { MapPin, User, Hash, ArrowRight, Loader, QrCode } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 
+// Accepts letters (incl. accents), spaces, hyphens, apostrophes — covers Rwandan,
+// French and English visitor names. Min length 2 enforced separately.
+const NAME_RE = /^[\p{L}][\p{L}\s'’\-.]{1,}$/u;
+
+// Rwanda phone: local 07XXXXXXXX (10 digits) or international +2507XXXXXXXX
+// (12 digits with optional leading +). Spaces / dashes are tolerated and
+// stripped before checking so users can paste numbers in any common shape.
+const PHONE_LOCAL_RE = /^07\d{8}$/;
+const PHONE_INTL_RE = /^\+?2507\d{8}$/;
+
+// Rwandan National ID — 16 digits. The first digit indicates citizenship
+// status (1 = Rwandan, 2 = foreign resident); we validate the prefix loosely.
+const NATIONAL_ID_RE = /^[12]\d{15}$/;
+
+function stripFormatting(value) {
+  return String(value || '').replace(/[\s\-()]/g, '');
+}
+
+function detectIdOrPhoneError(rawValue, t) {
+  const value = stripFormatting(rawValue);
+  if (!value) return t('visitor.checkin.errors.idOrPhoneRequired');
+
+  const looksLikePhone = value.startsWith('+') || value.startsWith('07') || value.startsWith('250');
+  const looksLikeId = /^[12]\d/.test(value) && value.length >= 12;
+
+  if (looksLikePhone) {
+    if (PHONE_LOCAL_RE.test(value) || PHONE_INTL_RE.test(value)) return null;
+    return t('visitor.checkin.errors.phoneInvalid');
+  }
+
+  if (looksLikeId) {
+    if (NATIONAL_ID_RE.test(value)) return null;
+    return t('visitor.checkin.errors.idInvalid');
+  }
+
+  return t('visitor.checkin.errors.idOrPhoneInvalid');
+}
+
+function detectNameError(rawValue, t) {
+  const value = String(rawValue || '').trim();
+  if (!value) return t('visitor.checkin.errors.nameRequired');
+  if (value.length < 2) return t('visitor.checkin.errors.nameTooShort');
+  if (!NAME_RE.test(value)) return t('visitor.checkin.errors.nameInvalid');
+  return null;
+}
+
 export default function CheckInPage() {
   const navigate = useNavigate();
   const { state, classifyVisitorDestination, registerVisitor, qrCheckin, isReady } = useSinarms();
   const { language, languages, setLanguage, t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
+  const [touched, setTouched] = useState({ name: false, idOrPhone: false });
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [selectedDestination, setSelectedDestination] = useState('');
   const [qrStatus, setQrStatus] = useState(null);
   const qrAttemptRef = useRef(false);
+
+  const nameError = detectNameError(formData.name, t);
+  const idOrPhoneError = detectIdOrPhoneError(formData.idOrPhone, t);
+  const showNameError = touched.name && nameError;
+  const showIdOrPhoneError = touched.idOrPhone && idOrPhoneError;
+  const isFormValid = !nameError && !idOrPhoneError;
 
   const activeOrganization =
     state.organizations.find((organization) => organization.status === 'active') || state.organizations[0] || null;
@@ -88,6 +141,13 @@ export default function CheckInPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setTouched({ name: true, idOrPhone: true });
+
+    if (nameError || idOrPhoneError) {
+      // Surface the inline errors instead of submitting an invalid form.
+      return;
+    }
+
     setIsProcessing(true);
 
     const apiLanguage = language === 'fr' ? 'fr' : language === 'rw' ? 'rw' : 'en';
@@ -127,8 +187,8 @@ export default function CheckInPage() {
       }
 
       const visitor = await registerVisitor({
-        name: formData.name,
-        idOrPhone: formData.idOrPhone,
+        name: formData.name.trim(),
+        idOrPhone: stripFormatting(formData.idOrPhone),
         destinationText:
           selectedDestination && selectedDestination !== 'other'
             ? destinationOptions.find((option) => option.value === selectedDestination)?.label || formData.destination
@@ -231,29 +291,60 @@ export default function CheckInPage() {
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.fullName')}</label>
             <div className="relative group">
-              <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)] transition-colors" />
+              <User size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showNameError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
               <input
                 type="text"
                 required
-                className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
+                aria-invalid={Boolean(showNameError)}
+                aria-describedby={showNameError ? 'visitor-name-error' : undefined}
+                className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
+                  showNameError
+                    ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
+                    : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
+                }`}
                 value={formData.name}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
               />
             </div>
+            {showNameError && (
+              <p id="visitor-name-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
+                {nameError}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1">
             <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.idOrPhone')}</label>
             <div className="relative group">
-              <Hash size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)] transition-colors" />
+              <Hash size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showIdOrPhoneError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
               <input
                 type="text"
                 required
-                className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder={t('visitor.checkin.idOrPhoneHint')}
+                aria-invalid={Boolean(showIdOrPhoneError)}
+                aria-describedby={showIdOrPhoneError ? 'visitor-idphone-error' : 'visitor-idphone-hint'}
+                className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
+                  showIdOrPhoneError
+                    ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
+                    : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
+                }`}
                 value={formData.idOrPhone}
-                onChange={(e) => setFormData({...formData, idOrPhone: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, idOrPhone: e.target.value })}
+                onBlur={() => setTouched((prev) => ({ ...prev, idOrPhone: true }))}
               />
             </div>
+            {showIdOrPhoneError ? (
+              <p id="visitor-idphone-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
+                {idOrPhoneError}
+              </p>
+            ) : (
+              <p id="visitor-idphone-hint" className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-1 pt-1">
+                {t('visitor.checkin.idOrPhoneHint')}
+              </p>
+            )}
           </div>
 
           <div className="space-y-1 pt-2">
@@ -313,13 +404,19 @@ export default function CheckInPage() {
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={isFormValid ? { scale: 1.02 } : undefined}
+                whileTap={isFormValid ? { scale: 0.98 } : undefined}
                 type="submit"
-                className="w-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white font-bold py-4 rounded-xl shadow-lg shadow-red-500/30 flex items-center justify-center gap-2 transition-all group"
+                disabled={!isFormValid}
+                aria-disabled={!isFormValid}
+                className={`w-full font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
+                  isFormValid
+                    ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
+                }`}
               >
                 {t('visitor.checkin.start')}
-                <ArrowRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                <ArrowRight size={20} className={isFormValid ? 'group-hover:translate-x-1 transition-transform' : ''} />
               </motion.button>
             )}
           </AnimatePresence>

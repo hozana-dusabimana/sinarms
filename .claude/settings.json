@@ -23,7 +23,15 @@
       "Bash(node -e \"require\\('./src/routes/visitors'\\); require\\('./src/services/domain'\\); console.log\\('OK'\\);\")",
       "WebSearch",
       "Bash(node -e ' *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(npm run *)",
+      "Bash(./venv/Scripts/python.exe -m uvicorn app.main:app --port 8001 --host 127.0.0.1)",
+      "Bash(curl -fsS http://localhost:4000/health)",
+      "Bash(curl -fsS http://127.0.0.1:8001/health)",
+      "Bash(curl -fsS -o /dev/null -w \"frontend HTTP %{http_code}\\\\n\" http://127.0.0.1:5173/)",
+      "Bash(curl -fsS http://127.0.0.1:8001/)",
+      "Bash(curl -fsS http://127.0.0.1:8001/healthz)",
+      "Bash(curl -fsS http://127.0.0.1:8001/openapi.json)"
     ]
   }
 }
