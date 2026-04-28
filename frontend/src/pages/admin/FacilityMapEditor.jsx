@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Plus, Route, Trash2, Save, Move, Crosshair, CheckCircle2, Loader2, Navigation, Circle, ArrowRight, X, CornerDownRight } from 'lucide-react';
+import { Upload, Plus, Route, Trash2, Save, Move, Crosshair, CheckCircle2, Loader2, Navigation, Circle, ArrowRight, X, CornerDownRight, QrCode } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMapEvents, ImageOverlay } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -46,7 +46,8 @@ function MapEvents({ activeTool, onMapClick }) {
 export default function FacilityMapEditor() {
   const [searchParams] = useSearchParams();
   const locationId = searchParams.get('locationId');
-  const { state, updateLocationMap } = useSinarms();
+  const { state, updateLocationMap, downloadLocationQr } = useSinarms();
+  const [isDownloadingQr, setIsDownloadingQr] = useState(false);
 
   const location = locationId ? getLocationById(state, locationId) : null;
   const organization = location ? getOrganizationById(state, location.organizationId) : null;
@@ -458,6 +459,26 @@ export default function FacilityMapEditor() {
             <Upload size={18} />
             <span className="hidden sm:inline">Upload Floorplan</span>
           </label>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!locationId || isDownloadingQr) return;
+              setIsDownloadingQr(true);
+              try {
+                await downloadLocationQr(locationId);
+              } catch (error) {
+                window.alert(error?.response?.data?.message || error?.message || 'Unable to download QR code.');
+              } finally {
+                setIsDownloadingQr(false);
+              }
+            }}
+            disabled={!locationId || isDownloadingQr}
+            title="Download a printable QR code that auto-checks in visitors at this location"
+            className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-xl transition-all font-bold flex items-center gap-2 border border-slate-300 dark:border-slate-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDownloadingQr ? <Loader2 size={18} className="animate-spin" /> : <QrCode size={18} />}
+            <span className="hidden sm:inline">{isDownloadingQr ? 'Preparing…' : 'Download QR'}</span>
+          </button>
           <button
             onClick={handleSaveLayout}
             disabled={isSaving}
