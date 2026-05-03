@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react'; 
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Users, Shield, ArrowRight, Activity, Globe2, Building2, Cpu, Network, Lock, Zap, Bot, Database, CheckCircle2, Twitter, Linkedin, Github, Mail, Phone } from 'lucide-react';
