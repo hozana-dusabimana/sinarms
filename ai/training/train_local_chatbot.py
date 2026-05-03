@@ -36,14 +36,32 @@ import csv
 import json
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, List, Optional
 
 import numpy as np
 
 from app.config import ARTIFACTS_DIR, DATA_DIR, MINILM_MODEL
+
+
+# Quality filters for the live conversation log. The deterministic chatbot
+# logger sets ``resolved=1`` for nav/faq/greeting hits, but greetings carry no
+# new training signal (the bootstrap CSV already covers them) and rows where
+# the underlying source was ``llm-fallback`` are LLM-generated text, not
+# verified answers. Excluding both keeps the corpus signal-rich.
+LIVE_LOG_EXCLUDED_TYPES = {"greeting"}
+LIVE_LOG_EXCLUDED_SOURCES = {"llm-fallback"}
+
+# PII redaction patterns applied to live-log questions before training. We do
+# not redact answers (they come from our own templates / FAQ / LLM polish and
+# are already vetted to not contain PII).
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_DIGIT_RUN_RE = re.compile(r"\b\d{7,}\b")
+_PHONE_RE = re.compile(r"\+?\d[\d\s().-]{6,}\d")
 
 LOGGER = logging.getLogger("train-local-chatbot")
 
@@ -91,19 +109,68 @@ def _read_external_csv(path: Path) -> List[QaRow]:
     return rows
 
 
-def _read_live_log(path: Path) -> List[QaRow]:
+def _redact_pii(text: str) -> str:
+    redacted = _EMAIL_RE.sub("[email]", text)
+    redacted = _PHONE_RE.sub("[phone]", redacted)
+    redacted = _DIGIT_RUN_RE.sub("[number]", redacted)
+    return redacted
+
+
+def _read_live_log(path: Path, max_age_days: Optional[int]) -> tuple[List[QaRow], dict]:
+    """Read the live conversation log with quality filters.
+
+    Returns the kept rows plus a dict of drop counts so the trainer can report
+    why rows were excluded. Rows are dropped when:
+
+    - ``resolved != "1"`` — the bot didn't actually answer.
+    - ``type`` is in ``LIVE_LOG_EXCLUDED_TYPES`` — already covered by bootstrap.
+    - ``source`` is in ``LIVE_LOG_EXCLUDED_SOURCES`` — LLM-generated text, not
+      a vetted answer (would create a feedback loop).
+    - ``timestamp`` is older than ``max_age_days`` — stale, may reference a
+      facility that has since changed.
+
+    Surviving rows get email / phone / long-digit runs redacted from the
+    question text before they enter the training corpus.
+    """
     rows: List[QaRow] = []
+    drops = {"unresolved": 0, "excluded_type": 0, "excluded_source": 0, "stale": 0, "empty": 0}
     if not path.exists():
-        return rows
+        return rows, drops
+
+    cutoff = (
+        datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        if max_age_days and max_age_days > 0 else None
+    )
+
     try:
         with path.open("r", encoding="utf-8", errors="ignore", newline="") as handle:
             reader = csv.DictReader(handle)
             for row in reader:
                 if row.get("resolved") != "1":
+                    drops["unresolved"] += 1
                     continue
-                q = (row.get("query") or "").strip()
+                if (row.get("type") or "").strip() in LIVE_LOG_EXCLUDED_TYPES:
+                    drops["excluded_type"] += 1
+                    continue
+                if (row.get("source") or "").strip() in LIVE_LOG_EXCLUDED_SOURCES:
+                    drops["excluded_source"] += 1
+                    continue
+                if cutoff is not None:
+                    ts = (row.get("timestamp") or "").strip()
+                    try:
+                        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                        if parsed.tzinfo is None:
+                            parsed = parsed.replace(tzinfo=timezone.utc)
+                        if parsed < cutoff:
+                            drops["stale"] += 1
+                            continue
+                    except ValueError:
+                        pass
+
+                q = _redact_pii((row.get("query") or "").strip())
                 a = (row.get("answer") or "").strip()
                 if not q or not a:
+                    drops["empty"] += 1
                     continue
                 rows.append(
                     QaRow(
@@ -115,7 +182,7 @@ def _read_live_log(path: Path) -> List[QaRow]:
                 )
     except Exception as error:
         LOGGER.warning("Failed to read live log: %s", error)
-    return rows
+    return rows, drops
 
 
 def _dedupe(rows: Iterable[QaRow]) -> List[QaRow]:
@@ -253,6 +320,19 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument("--test-fraction", type=float, default=0.2)
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR)
     parser.add_argument("--model", type=str, default=MINILM_MODEL)
+    parser.add_argument(
+        "--max-age-days",
+        type=int,
+        default=180,
+        help="Drop live-log rows older than this many days (0 disables). "
+             "Prevents stale answers about moved offices from being served.",
+    )
+    parser.add_argument(
+        "--regression-tolerance",
+        type=float,
+        default=0.05,
+        help="Warn if top-1 accuracy drops more than this vs the previous run.",
+    )
     args = parser.parse_args(argv)
 
     np.random.seed(7)
@@ -265,8 +345,8 @@ def main(argv: Optional[List[str]] = None) -> None:
         external_rows.extend(loaded)
 
     LOGGER.info("Reading live conversation log from %s", LIVE_LOG)
-    live_rows = _read_live_log(LIVE_LOG)
-    LOGGER.info("  %d resolved rows from live log", len(live_rows))
+    live_rows, live_drops = _read_live_log(LIVE_LOG, args.max_age_days)
+    LOGGER.info("  %d resolved rows kept from live log (drops: %s)", len(live_rows), live_drops)
 
     rows = _dedupe(external_rows + live_rows)
     LOGGER.info("Total deduplicated rows: %d", len(rows))
@@ -301,19 +381,77 @@ def main(argv: Optional[List[str]] = None) -> None:
         "train_size": len(train_rows),
         "test_size": len(test_rows),
         "threshold": args.threshold,
+        "max_age_days": args.max_age_days,
         "metrics": metrics,
         "encode_seconds": round(encode_seconds, 2),
         "trained_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "sources": {
             "external_files": [p.name for p in sorted(EXTERNAL_DIR.glob("*.csv"))],
             "live_log_rows": len(live_rows),
+            "live_log_drops": live_drops,
         },
     }
     with (args.output_dir / "meta.json").open("w", encoding="utf-8") as handle:
         json.dump(meta, handle, indent=2, ensure_ascii=False)
 
+    _append_metrics_history(args.output_dir, meta, args.regression_tolerance)
+
     LOGGER.info("Saved artifacts to %s", args.output_dir)
     print(json.dumps(meta, indent=2, ensure_ascii=False))
+
+
+def _append_metrics_history(output_dir: Path, meta: dict, tolerance: float) -> None:
+    """Append the run's metrics to a history file and warn on regression.
+
+    The history file is JSONL (one row per training run). On each run we
+    compare the current top-1 accuracy to the previous run's top-1 and emit
+    a WARNING if it dropped by more than ``tolerance``. The warning is
+    advisory — it does not fail the run, because in legitimate cases (e.g.
+    new tougher test rows added) accuracy can drop temporarily.
+    """
+    history_path = output_dir / "metrics_history.jsonl"
+    previous_top1: Optional[float] = None
+    if history_path.exists():
+        try:
+            with history_path.open("r", encoding="utf-8") as handle:
+                last_line = ""
+                for line in handle:
+                    if line.strip():
+                        last_line = line
+                if last_line:
+                    previous_top1 = (
+                        json.loads(last_line).get("metrics", {}).get("top1_accuracy")
+                    )
+        except Exception as error:  # pragma: no cover
+            LOGGER.warning("Could not read metrics history: %s", error)
+
+    record = {
+        "trained_at": meta["trained_at"],
+        "train_size": meta["train_size"],
+        "test_size": meta["test_size"],
+        "metrics": meta["metrics"],
+    }
+    try:
+        with history_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as error:  # pragma: no cover
+        LOGGER.warning("Could not append to metrics history: %s", error)
+        return
+
+    current_top1 = meta["metrics"].get("top1_accuracy")
+    if previous_top1 is not None and current_top1 is not None:
+        delta = current_top1 - previous_top1
+        if delta < -tolerance:
+            LOGGER.warning(
+                "REGRESSION: top1_accuracy dropped from %.4f to %.4f (delta %.4f, tolerance %.2f). "
+                "Inspect ai/data/conversation_log.csv for noisy rows.",
+                previous_top1, current_top1, delta, tolerance,
+            )
+        else:
+            LOGGER.info(
+                "Regression check ok: top1 %.4f -> %.4f (delta %+.4f)",
+                previous_top1, current_top1, delta,
+            )
 
 
 if __name__ == "__main__":  # pragma: no cover
