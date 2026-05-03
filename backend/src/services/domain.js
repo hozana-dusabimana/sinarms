@@ -350,7 +350,7 @@ async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
     return { ...faqMatch, source: 'fallback', type: 'faq' };
   }
 
-  if (navAnswer) {
+  if (navAnswer && (nav.confidence || 0) >= 0.5) {
     return {
       ...nav,
       answer: navAnswer,
@@ -395,7 +395,7 @@ async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
   // facility destinations and FAQ as grounded context. The prompt instructs
   // the model to refuse rather than invent when the fact isn't present.
   if (openrouterClient.isEnabled()) {
-    const location = getLocationById(state, locationId);
+    const location = (state.locations || []).find((entry) => entry.id === locationId) || null;
     const availableDestinations = (map.nodes || [])
       .filter((n) => n && n.label && !['exit', 'checkpoint'].includes(n.type))
       .map((n) => n.label);

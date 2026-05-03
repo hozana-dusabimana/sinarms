@@ -212,9 +212,16 @@ function calculateRoute(map, fromNodeId, toNodeId) {
   };
 }
 
+const FAQ_STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'do', 'does', 'did',
+  'for', 'from', 'go', 'have', 'has', 'how', 'i', 'in', 'is', 'it', 'me', 'my',
+  'of', 'on', 'or', 'please', 'the', 'there', 'this', 'to', 'was', 'we', 'were',
+  'what', 'when', 'where', 'who', 'why', 'will', 'with', 'you', 'your',
+]);
+
 function tokenScore(left, right) {
-  const leftTokens = normalizeText(left).split(' ').filter(Boolean);
-  const rightTokens = normalizeText(right).split(' ').filter(Boolean);
+  const leftTokens = normalizeText(left).split(' ').filter((t) => t && !FAQ_STOPWORDS.has(t));
+  const rightTokens = normalizeText(right).split(' ').filter((t) => t && !FAQ_STOPWORDS.has(t));
 
   if (!leftTokens.length || !rightTokens.length) {
     return 0;
