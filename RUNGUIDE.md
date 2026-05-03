@@ -129,6 +129,56 @@ cd frontend && npm test
 - **Frontend shows "AI assistant unavailable"** — the FastAPI process isn't running, or `AI_ENGINE_URL` in `backend/.env` points to the wrong port.
 - **Map has no destination pin** — hard-refresh (`Ctrl+Shift+R`) to drop the cached bundle.
 
+## 10. Local chatbot — research/demo artifact
+
+A self-hosted retrieval chatbot trained on a Kaggle-style CSV dataset plus the
+live conversation log. **Not** wired into the production chatbot route — the
+production path still uses the deterministic intent classifier + FAQ matcher
+with optional OpenRouter polish. This artifact exists so a future iteration of
+the project could replace OpenRouter without an external API.
+
+### Datasets
+
+- `ai/data/external/chatbot_bootstrap.csv` — small visitor-domain Q&A grouped
+  by topic (greeting, toilet, reception, manager, parking, hours, …) in
+  English, Kinyarwanda, and French. Tracked in git.
+- `ai/data/conversation_log.csv` — appended automatically on every chatbot
+  query by the backend (`backend/src/services/conversationLog.js`). Gitignored.
+- `ai/data/external/<your-kaggle-set>.csv` — optional. Pull a real Kaggle Q&A
+  set with:
+
+  ```bash
+  cd ai
+  python -m training.download_kaggle --qa-kaggle kreeshrajani/3k-conversations-dataset-for-chatbot
+  ```
+
+  Requires `~/.kaggle/kaggle.json`. Without credentials the bootstrap CSV is
+  enough to demo the pipeline.
+
+### Train
+
+```bash
+cd ai
+venv\Scripts\activate
+python -m training.train_local_chatbot
+```
+
+The trainer reads every CSV under `ai/data/external/` plus the resolved rows of
+the live log, encodes the questions with the multilingual MiniLM model already
+in use by the FAQ matcher, holds out 20% as a stratified test set, and prints
+top-1 / top-3 retrieval accuracy and mean answer similarity. Artifacts land at
+`ai/artifacts/local_chatbot/{embeddings.npy, corpus.jsonl, meta.json}`.
+
+### Demo
+
+```bash
+python -m training.chat_repl
+```
+
+Shows the matched question, similarity score, and the next two alternatives so
+it is clear *why* the bot answered the way it did. Type `:meta` to print the
+training run metadata (model id, train size, accuracy), `:q` to quit.
+
 ## One-terminal shortcut (optional)
 
 If you'd rather not juggle three terminals, in three separate shells run:

@@ -1,0 +1,82 @@
+question,answer,language,source,topic
+hi,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+hello,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+hey there,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+good morning,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+good afternoon,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+how are you,Hi! I can help you find offices and common areas on this site.,en,bootstrap,greeting
+muraho,Hi! I can help you find offices and common areas on this site.,rw,bootstrap,greeting
+mwiriwe,Hi! I can help you find offices and common areas on this site.,rw,bootstrap,greeting
+mwaramutse,Hi! I can help you find offices and common areas on this site.,rw,bootstrap,greeting
+bonjour,Hi! I can help you find offices and common areas on this site.,fr,bootstrap,greeting
+salut,Hi! I can help you find offices and common areas on this site.,fr,bootstrap,greeting
+thank you,You're welcome. Let me know if you need anything else.,en,bootstrap,thanks
+thanks,You're welcome. Let me know if you need anything else.,en,bootstrap,thanks
+thanks a lot,You're welcome. Let me know if you need anything else.,en,bootstrap,thanks
+appreciate it,You're welcome. Let me know if you need anything else.,en,bootstrap,thanks
+murakoze,You're welcome. Let me know if you need anything else.,rw,bootstrap,thanks
+murakoze cyane,You're welcome. Let me know if you need anything else.,rw,bootstrap,thanks
+merci,You're welcome. Let me know if you need anything else.,fr,bootstrap,thanks
+merci beaucoup,You're welcome. Let me know if you need anything else.,fr,bootstrap,thanks
+bye,Goodbye. Have a great day.,en,bootstrap,goodbye
+goodbye,Goodbye. Have a great day.,en,bootstrap,goodbye
+see you later,Goodbye. Have a great day.,en,bootstrap,goodbye
+murabeho,Goodbye. Have a great day.,rw,bootstrap,goodbye
+au revoir,Goodbye. Have a great day.,fr,bootstrap,goodbye
+where is the toilet,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+where is the bathroom,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+where is the restroom,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+where can i find the toilet,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+i need the bathroom,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+where are the toilets,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,en,bootstrap,toilet
+ndashaka ubwiherero,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,rw,bootstrap,toilet
+ubwiherero buri he,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,rw,bootstrap,toilet
+ou sont les toilettes,The toilets are signposted from the main corridor — the receptionist can point you to the closest one.,fr,bootstrap,toilet
+where is reception,Reception is at the main entrance — follow the signs from the gate.,en,bootstrap,reception
+where is the reception desk,Reception is at the main entrance — follow the signs from the gate.,en,bootstrap,reception
+how do i find reception,Reception is at the main entrance — follow the signs from the gate.,en,bootstrap,reception
+take me to reception,Reception is at the main entrance — follow the signs from the gate.,en,bootstrap,reception
+where do i check in,Reception is at the main entrance — follow the signs from the gate.,en,bootstrap,reception
+ou est la reception,Reception is at the main entrance — follow the signs from the gate.,fr,bootstrap,reception
+reception iri he,Reception is at the main entrance — follow the signs from the gate.,rw,bootstrap,reception
+where is the manager office,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,en,bootstrap,manager
+where is the director,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,en,bootstrap,manager
+i want to see the manager,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,en,bootstrap,manager
+i need to talk to the manager,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,en,bootstrap,manager
+ndashaka kujya kwa muyobozi,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,rw,bootstrap,manager
+je cherche le bureau du directeur,The Plant Manager Office is in the main administration block — please ask Reception to be announced first.,fr,bootstrap,manager
+how do i check in,Visitors check in at the Reception desk by giving your name and the person you are visiting.,en,bootstrap,checkin
+how to check in as a visitor,Visitors check in at the Reception desk by giving your name and the person you are visiting.,en,bootstrap,checkin
+visitor check in,Visitors check in at the Reception desk by giving your name and the person you are visiting.,en,bootstrap,checkin
+how do i register,Visitors check in at the Reception desk by giving your name and the person you are visiting.,en,bootstrap,checkin
+i am a visitor,Visitors check in at the Reception desk by giving your name and the person you are visiting.,en,bootstrap,checkin
+do you have visitor parking,Yes — visitor parking is available near the main gate before security.,en,bootstrap,parking
+where can i park,Yes — visitor parking is available near the main gate before security.,en,bootstrap,parking
+where is the parking,Yes — visitor parking is available near the main gate before security.,en,bootstrap,parking
+is there parking for visitors,Yes — visitor parking is available near the main gate before security.,en,bootstrap,parking
+hari aho nshobora gupakira imodoka,Yes — visitor parking is available near the main gate before security.,rw,bootstrap,parking
+ou puis-je me garer,Yes — visitor parking is available near the main gate before security.,fr,bootstrap,parking
+i need help with a delivery,For deliveries, please go to the Reception desk so they can call the right person.,en,bootstrap,delivery
+i have a package,For deliveries, please go to the Reception desk so they can call the right person.,en,bootstrap,delivery
+where do i drop off a package,For deliveries, please go to the Reception desk so they can call the right person.,en,bootstrap,delivery
+i am here for a delivery,For deliveries, please go to the Reception desk so they can call the right person.,en,bootstrap,delivery
+what time do you open,Please ask the Reception desk for the current opening hours.,en,bootstrap,hours
+what are the visiting hours,Please ask the Reception desk for the current opening hours.,en,bootstrap,hours
+when does the office open,Please ask the Reception desk for the current opening hours.,en,bootstrap,hours
+opening hours,Please ask the Reception desk for the current opening hours.,en,bootstrap,hours
+what time do you close,Please ask the Reception desk for the current opening hours.,en,bootstrap,hours
+where is the meeting room,Meeting rooms are available — Reception will tell you which one is free.,en,bootstrap,meeting
+is there a meeting room,Meeting rooms are available — Reception will tell you which one is free.,en,bootstrap,meeting
+i need a meeting room,Meeting rooms are available — Reception will tell you which one is free.,en,bootstrap,meeting
+where is the conference room,Meeting rooms are available — Reception will tell you which one is free.,en,bootstrap,meeting
+where is first aid,The First Aid Office is signposted from the main corridor. In an emergency tell any staff member immediately.,en,bootstrap,firstaid
+i need first aid,The First Aid Office is signposted from the main corridor. In an emergency tell any staff member immediately.,en,bootstrap,firstaid
+medical emergency,The First Aid Office is signposted from the main corridor. In an emergency tell any staff member immediately.,en,bootstrap,firstaid
+someone is hurt,The First Aid Office is signposted from the main corridor. In an emergency tell any staff member immediately.,en,bootstrap,firstaid
+i am lost,No problem — head back to the Reception desk and they will help you find your way.,en,bootstrap,lost
+i don't know where to go,No problem — head back to the Reception desk and they will help you find your way.,en,bootstrap,lost
+i can't find it,No problem — head back to the Reception desk and they will help you find your way.,en,bootstrap,lost
+help me find a place,No problem — head back to the Reception desk and they will help you find your way.,en,bootstrap,lost
+where is the exit,The main exit is back through the entrance lobby past the Reception desk.,en,bootstrap,exit
+how do i get out,The main exit is back through the entrance lobby past the Reception desk.,en,bootstrap,exit
+where is the way out,The main exit is back through the entrance lobby past the Reception desk.,en,bootstrap,exit
