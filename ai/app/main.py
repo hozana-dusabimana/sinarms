@@ -8,12 +8,58 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from models import faq_matcher, intent_classifier
-
 from .backend_client import fetch_faq, fetch_maps
 from .config import AI_HOST, AI_PORT
-from . import router
 from .state import state
+
+# Lazy-load heavy dependencies (ML models, networkx, etc.)
+# to allow server startup even if they aren't installed yet
+_faq_matcher = None
+_intent_classifier = None
+_router = None
+_models_import_error = None
+
+
+def _get_faq_matcher():
+    global _faq_matcher, _models_import_error
+    if _faq_matcher is not None:
+        return _faq_matcher
+    if _models_import_error is not None:
+        raise _models_import_error
+    try:
+        from models import faq_matcher
+        _faq_matcher = faq_matcher
+        return faq_matcher
+    except Exception as e:
+        _models_import_error = e
+        raise
+
+
+def _get_intent_classifier():
+    global _intent_classifier, _models_import_error
+    if _intent_classifier is not None:
+        return _intent_classifier
+    if _models_import_error is not None:
+        raise _models_import_error
+    try:
+        from models import intent_classifier
+        _intent_classifier = intent_classifier
+        return intent_classifier
+    except Exception as e:
+        _models_import_error = e
+        raise
+
+
+def _get_router():
+    global _router
+    if _router is not None:
+        return _router
+    try:
+        from . import router
+        _router = router
+        return router
+    except Exception as e:
+        raise RuntimeError(f"Router failed to load: {e}")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 LOGGER = logging.getLogger("sinarms-ai")
@@ -63,14 +109,20 @@ def _refresh_from_backend() -> None:
     maps = fetch_maps()
     if maps:
         state.set_maps(maps)
-        intent_classifier.invalidate_cache()
+        try:
+            _get_intent_classifier().invalidate_cache()
+        except Exception as e:
+            LOGGER.warning("Could not invalidate intent classifier cache: %s", e)
         LOGGER.info("Loaded %d facility map(s) from backend.", len(maps))
     else:
         LOGGER.warning("Backend unreachable on startup; AI engine will serve empty state.")
 
     faq_entries = fetch_faq()
     state.set_faq(faq_entries)
-    faq_matcher.invalidate_cache()
+    try:
+        _get_faq_matcher().invalidate_cache()
+    except Exception as e:
+        LOGGER.warning("Could not invalidate FAQ matcher cache: %s", e)
     LOGGER.info("Loaded %d FAQ entries from backend.", len(faq_entries))
 
 
@@ -81,25 +133,38 @@ async def startup() -> None:
 
 @app.get("/healthz")
 async def healthz() -> Dict[str, Any]:
+    models_loaded = False
+    try:
+        models_loaded = _get_intent_classifier().models_loaded()
+    except Exception:
+        pass
     return {
         "status": "ok",
         "locations": list(state.maps.keys()),
         "faqEntries": len(state.faq),
-        "models": intent_classifier.models_loaded(),
+        "models": models_loaded,
     }
 
 
 @app.post("/ai/classify-intent")
 async def classify_intent(payload: ClassifyRequest) -> Dict[str, Any]:
-    return intent_classifier.classify(payload.text, payload.locationId)
+    try:
+        return _get_intent_classifier().classify(payload.text, payload.locationId)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Intent classifier unavailable: {str(e)}")
 
 
 @app.post("/ai/calculate-route")
 async def calculate_route(payload: RouteRequest) -> Dict[str, Any]:
-    result = router.calculate_route(payload.fromNode, payload.toNode, payload.locationId)
-    if not result["pathNodeIds"]:
-        raise HTTPException(status_code=404, detail="No route available.")
-    return result
+    try:
+        result = _get_router().calculate_route(payload.fromNode, payload.toNode, payload.locationId)
+        if not result["pathNodeIds"]:
+            raise HTTPException(status_code=404, detail="No route available.")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Router unavailable: {str(e)}")
 
 
 @app.post("/ai/chatbot")
@@ -110,7 +175,11 @@ async def chatbot(payload: ChatbotRequest) -> Dict[str, Any]:
 
     nav_forced = payload.type == "navigation" or bool(NAV_KEYWORDS.search(query))
 
-    nav_local = intent_classifier.classify(query, payload.locationId)
+    try:
+        nav_local = _get_intent_classifier().classify(query, payload.locationId)
+    except Exception as e:
+        LOGGER.warning("Intent classifier failed: %s", e)
+        nav_local = {"status": "error", "confidence": 0.0}
     nav_conf = float(nav_local.get("confidence") or 0.0)
 
     # If the current location is weak, check whether the destination exists in
@@ -118,17 +187,24 @@ async def chatbot(payload: ChatbotRequest) -> Dict[str, Any]:
     # so the frontend can offer to switch.
     cross_location: Optional[Dict[str, Any]] = None
     if nav_local.get("status") != "resolved" or nav_conf < 0.7:
-        candidate = intent_classifier.classify_across_locations(query)
-        candidate_conf = float(candidate.get("confidence") or 0.0)
-        candidate_loc = candidate.get("locationId")
-        if (
-            candidate_loc
-            and candidate_loc != (payload.locationId or candidate_loc)
-            and candidate_conf > nav_conf + 0.05
-        ):
-            cross_location = candidate
+        try:
+            candidate = _get_intent_classifier().classify_across_locations(query)
+            candidate_conf = float(candidate.get("confidence") or 0.0)
+            candidate_loc = candidate.get("locationId")
+            if (
+                candidate_loc
+                and candidate_loc != (payload.locationId or candidate_loc)
+                and candidate_conf > nav_conf + 0.05
+            ):
+                cross_location = candidate
+        except Exception as e:
+            LOGGER.warning("Cross-location classification failed: %s", e)
 
-    faq_result = faq_matcher.answer(query, payload.organizationId)
+    try:
+        faq_result = _get_faq_matcher().answer(query, payload.organizationId)
+    except Exception as e:
+        LOGGER.warning("FAQ matcher failed: %s", e)
+        faq_result = {"answer": None, "confidence": 0.0}
     faq_conf = float(faq_result.get("confidence") or 0.0)
 
     nav_is_strong = nav_local.get("status") in {"resolved", "confirm"} and nav_conf >= NAV_USABLE_THRESHOLD
@@ -159,7 +235,10 @@ async def refresh_graph(payload: RefreshGraphRequest) -> Dict[str, Any]:
         maps = fetch_maps()
         state.set_maps(maps)
 
-    intent_classifier.invalidate_cache()
+    try:
+        _get_intent_classifier().invalidate_cache()
+    except Exception as e:
+        LOGGER.warning("Could not invalidate intent classifier cache: %s", e)
     return {"status": "ok", "locations": list(state.maps.keys())}
 
 
@@ -169,7 +248,10 @@ async def refresh_faq(payload: RefreshFaqRequest) -> Dict[str, Any]:
         state.set_faq(payload.faq)
     else:
         state.set_faq(fetch_faq())
-    faq_matcher.invalidate_cache()
+    try:
+        _get_faq_matcher().invalidate_cache()
+    except Exception as e:
+        LOGGER.warning("Could not invalidate FAQ matcher cache: %s", e)
     return {"status": "ok", "faqEntries": len(state.faq)}
 
 
