@@ -219,8 +219,8 @@ const DICTIONARY = {
     'landing.nav.visitorPortal': 'Visitor Portal',
 
     'landing.hero.statusOnline': 'System Online V1.0',
-    'landing.hero.titleA': 'Smart Facility',
-    'landing.hero.titleB': 'Intelligence',
+    'landing.hero.titleA': 'Indoor Navigation',
+    'landing.hero.titleB': 'Reimagined',
     'landing.hero.description': 'Welcome to the Smart Institutional Navigation and Resource Mapping System (SINARMS). The definitive solution for enterprise-grade visitor tracking, dynamic wayfinding, and real-time facility mapping.',
     'landing.hero.visitorCardTitle': 'Visitor Portal',
     'landing.hero.visitorCardDesc': 'Self-service check-in, AI assistance, and interactive indoor routing.',
@@ -501,8 +501,8 @@ const DICTIONARY = {
     'landing.nav.visitorPortal': 'Portail Visiteur',
 
     'landing.hero.statusOnline': 'Système en ligne V1.0',
-    'landing.hero.titleA': 'Intelligence',
-    'landing.hero.titleB': 'des Sites',
+    'landing.hero.titleA': 'Navigation Intérieure',
+    'landing.hero.titleB': 'Réinventée',
     'landing.hero.description': 'Bienvenue sur SINARMS — la solution complète pour le suivi des visiteurs, l\'orientation dynamique et la cartographie en temps réel des sites.',
     'landing.hero.visitorCardTitle': 'Portail Visiteur',
     'landing.hero.visitorCardDesc': 'Enregistrement libre-service, assistance IA et orientation intérieure interactive.',
@@ -783,8 +783,8 @@ const DICTIONARY = {
     'landing.nav.visitorPortal': 'Aho abashyitsi binjirira',
 
     'landing.hero.statusOnline': 'Sisitemu Ikora V1.0',
-    'landing.hero.titleA': 'Ubwenge bw\'',
-    'landing.hero.titleB': 'Ibikorwa',
+    'landing.hero.titleA': 'Inzira mu Nyubako',
+    'landing.hero.titleB': 'Bugezweho',
     'landing.hero.description': 'Murakaza neza muri SINARMS — sisitemu yiyobora abashyitsi, ikabereka inzira mu nyubako kandi ikagenzura aho bari mu gihe nyacyo.',
     'landing.hero.visitorCardTitle': 'Aho abashyitsi binjirira',
     'landing.hero.visitorCardDesc': 'Kwiyandikisha wenyine, ubufasha bw\'ubwenge bw\'ubukorano, no kwerekezwa imbere.',
