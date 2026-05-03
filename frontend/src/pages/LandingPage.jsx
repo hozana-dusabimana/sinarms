@@ -110,18 +110,18 @@ export default function LandingPage() {
       {/* Background Ambience & Cinematic Hero Video */}
       <div className="absolute top-0 left-0 w-full h-[120vh] overflow-hidden pointer-events-none z-0 bg-[#060b14]">
         <motion.div style={{ y: yBg }} className="absolute inset-0">
-          <video 
-            autoPlay 
-            loop 
-            muted 
-            playsInline 
-            className="absolute inset-0 w-full h-full object-cover opacity-80 dark:opacity-60 scale-105"
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover opacity-40 dark:opacity-25 scale-105"
             poster="/images/hero_background.png"
           >
             <source src="https://assets.mixkit.co/videos/preview/mixkit-business-people-walking-in-a-modern-office-building-4241-large.mp4" type="video/mp4" />
             Your browser does not support the video tag.
           </video>
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-slate-50/50 to-slate-50 dark:via-[#060b14]/70 dark:to-[#060b14] z-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-b from-slate-50/60 via-slate-50/70 to-slate-50 dark:from-[#060b14]/60 dark:via-[#060b14]/80 dark:to-[#060b14] z-10"></div>
         </motion.div>
       </div>
 
@@ -204,14 +204,14 @@ export default function LandingPage() {
             <span className="text-xs font-bold text-slate-700 dark:text-slate-300 tracking-widest uppercase">{t('landing.hero.statusOnline')}</span>
           </motion.div>
 
-          <motion.h1 variants={itemVariants} className="text-5xl lg:text-7xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.1] mb-6 drop-shadow-sm">
+          <motion.h1 variants={itemVariants} className="text-5xl lg:text-7xl font-black text-slate-900 dark:text-white tracking-tight leading-[1.1] mb-6 drop-shadow-lg">
             {t('landing.hero.titleA')} <br/>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-[var(--color-brand-terracotta)] via-red-500 to-orange-500">
               {t('landing.hero.titleB')}
             </span>
           </motion.h1>
 
-          <motion.p variants={itemVariants} className="text-lg text-slate-600 dark:text-slate-400 mb-10 leading-relaxed max-w-xl">
+          <motion.p variants={itemVariants} className="text-lg text-slate-700 dark:text-slate-200 mb-10 leading-relaxed max-w-xl">
             {t('landing.hero.description')}
           </motion.p>
 

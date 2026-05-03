@@ -149,16 +149,111 @@ def iter_paraphrase_pairs(destination: Path) -> List[tuple[str, str]]:
     return pairs
 
 
+def iter_qa_pairs(destination: Path) -> List[tuple[str, str]]:
+    """Scan downloaded files and yield (question, answer) pairs from chat-style
+    Kaggle datasets.
+
+    Recognised schemas:
+    - CSV/TSV with columns ``question``/``answer`` (e.g.
+      ``kreeshrajani/3k-conversations-dataset-for-chatbot``).
+    - CSV with ``Context``/``Response`` columns (mental-health style sets).
+    - Plain text dialog files where each line is ``Q\\tA`` (e.g.
+      ``grafstor/simple-dialogs-for-chatbot``).
+    - JSONL files with ``question``/``answer`` keys.
+    """
+    pairs: List[tuple[str, str]] = []
+    if not destination.exists():
+        return pairs
+
+    import csv  # noqa: WPS433
+
+    for csv_file in list(destination.glob("*.csv")) + list(destination.glob("*.tsv")):
+        try:
+            delimiter = "\t" if csv_file.suffix.lower() == ".tsv" else ","
+            with csv_file.open("r", encoding="utf-8", errors="ignore") as handle:
+                reader = csv.DictReader(handle, delimiter=delimiter)
+                fieldnames = {name.lower(): name for name in (reader.fieldnames or [])}
+                candidates = [
+                    ("question", "answer"),
+                    ("context", "response"),
+                    ("input", "output"),
+                    ("prompt", "completion"),
+                    ("user", "bot"),
+                ]
+                match = next(
+                    ((fieldnames[a], fieldnames[b]) for (a, b) in candidates
+                     if a in fieldnames and b in fieldnames),
+                    None,
+                )
+                if not match:
+                    continue
+                q_col, a_col = match
+                for row in reader:
+                    q = (row.get(q_col) or "").strip()
+                    a = (row.get(a_col) or "").strip()
+                    if q and a:
+                        pairs.append((q, a))
+        except Exception as error:  # pragma: no cover
+            LOGGER.warning("Failed to parse %s as Q&A: %s", csv_file, error)
+
+    for txt_file in destination.glob("*.txt"):
+        try:
+            with txt_file.open("r", encoding="utf-8", errors="ignore") as handle:
+                for line in handle:
+                    if "\t" not in line:
+                        continue
+                    q, a = line.rstrip("\n").split("\t", 1)
+                    q, a = q.strip(), a.strip()
+                    if q and a:
+                        pairs.append((q, a))
+        except Exception as error:  # pragma: no cover
+            LOGGER.warning("Failed to parse %s as Q&A: %s", txt_file, error)
+
+    for jsonl_file in destination.glob("*.jsonl"):
+        try:
+            with jsonl_file.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        continue
+                    for q_key, a_key in (("question", "answer"), ("input", "output"), ("prompt", "completion")):
+                        q = (row.get(q_key) or "").strip() if isinstance(row.get(q_key), str) else ""
+                        a = (row.get(a_key) or "").strip() if isinstance(row.get(a_key), str) else ""
+                        if q and a:
+                            pairs.append((q, a))
+                            break
+        except Exception as error:  # pragma: no cover
+            LOGGER.warning("Failed to parse %s as Q&A: %s", jsonl_file, error)
+
+    return pairs
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--kaggle", action="append", default=[])
+    parser.add_argument(
+        "--qa-kaggle",
+        action="append",
+        default=[],
+        help="Kaggle Q&A datasets (e.g. kreeshrajani/3k-conversations-dataset-for-chatbot)",
+    )
     parser.add_argument("--hf", action="append", default=[])
     parser.add_argument("--output-dir", type=Path, default=DATA_DIR / "external")
+    parser.add_argument(
+        "--export-qa-csv",
+        type=Path,
+        default=None,
+        help="If set, write the parsed Q&A pairs as a single normalised CSV here.",
+    )
     args = parser.parse_args()
 
     targets_k = args.kaggle or ["mrutyunjaybiswal/quora-question-pairs"]
+    targets_qa = args.qa_kaggle or ["kreeshrajani/3k-conversations-dataset-for-chatbot"]
     targets_h = args.hf or ["Helsinki-NLP/tatoeba_mt:eng-kin"]
+
+    for dataset in targets_qa:
+        download_kaggle(dataset, args.output_dir)
 
     ok = False
     for dataset in targets_k:
@@ -175,6 +270,20 @@ def main() -> None:
     else:
         pairs = iter_paraphrase_pairs(args.output_dir)
         LOGGER.info("Parsed %d paraphrase-style pairs from external data.", len(pairs))
+
+    qa_pairs = iter_qa_pairs(args.output_dir)
+    LOGGER.info("Parsed %d Q&A pairs from external data.", len(qa_pairs))
+
+    if args.export_qa_csv and qa_pairs:
+        import csv  # noqa: WPS433
+
+        args.export_qa_csv.parent.mkdir(parents=True, exist_ok=True)
+        with args.export_qa_csv.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(["question", "answer", "language", "source"])
+            for q, a in qa_pairs:
+                writer.writerow([q, a, "en", "kaggle"])
+        LOGGER.info("Exported %d Q&A pairs to %s", len(qa_pairs), args.export_qa_csv)
 
 
 if __name__ == "__main__":  # pragma: no cover

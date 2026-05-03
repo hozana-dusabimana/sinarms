@@ -1,6 +1,7 @@
 const express = require('express');
 const { getState, mutateState } = require('../data/store');
 const { chatbotRespond } = require('../services/domain');
+const conversationLog = require('../services/conversationLog');
 
 const router = express.Router();
 
@@ -23,6 +24,14 @@ router.post('/query', async (req, res) => {
       return draft;
     });
   }
+
+  conversationLog.record({
+    query: req.body.query,
+    result,
+    locationId,
+    organizationId: req.body.organizationId || null,
+    language: req.body.language || null,
+  });
 
   return res.json(result);
 });

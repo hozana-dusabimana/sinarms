@@ -35,6 +35,7 @@ Thumbs.db
 Desktop.ini
 .idea/
 .vscode/
+.claude/
 
 # Local backups / dumps
 backups/
@@ -45,3 +46,9 @@ backups/
 
 # Test artifacts
 .mysql-state.json
+
+# Local chatbot training artifacts and live log
+ai/data/conversation_log.csv
+ai/data/external/quora_duplicate_questions.csv
+ai/data/external/*.zip
+ai/artifacts/local_chatbot/
