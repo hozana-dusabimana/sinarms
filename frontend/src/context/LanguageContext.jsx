@@ -784,7 +784,7 @@ const DICTIONARY = {
 
     'landing.hero.statusOnline': 'Sisitemu Ikora V1.0',
     'landing.hero.titleA': 'Inzira mu Nyubako',
-    'landing.hero.titleB': 'Bugezweho',
+    'landing.hero.titleB': 'Igezweho',
     'landing.hero.description': 'Murakaza neza muri SINARMS — sisitemu yiyobora abashyitsi, ikabereka inzira mu nyubako kandi ikagenzura aho bari mu gihe nyacyo.',
     'landing.hero.visitorCardTitle': 'Aho abashyitsi binjirira',
     'landing.hero.visitorCardDesc': 'Kwiyandikisha wenyine, ubufasha bw\'ubwenge bw\'ubukorano, no kwerekezwa imbere.',
