@@ -7,7 +7,7 @@ import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getLocationById, getNode } from '../../lib/sinarmsEngine';
 
-import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Rectangle, ImageOverlay, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 // Leaflet default icon fix
@@ -373,6 +373,33 @@ export default function MapNavigationPage() {
     ...(isValidLatLng(destinationNodePos) ? [destinationNodePos] : []),
   ].filter(isValidLatLng);
 
+  // Building footprint: the bounding box of the location's mapped nodes, with
+  // a small geographic padding. This is what gives the destination a visible
+  // identity on the map — without it, the destination is just a pin floating
+  // on generic OSM streets and the "site" is indistinguishable from the
+  // surroundings. When a floorplan image is attached to the location, we also
+  // overlay it inside the same bounds so the visitor sees the actual building.
+  const buildingBounds = (() => {
+    const nodePositions = (map?.nodes || [])
+      .map(getNodeLatLng)
+      .filter(isValidLatLng);
+    if (nodePositions.length < 2) return null;
+    let minLat = Infinity, maxLat = -Infinity, minLng = Infinity, maxLng = -Infinity;
+    for (const [lat, lng] of nodePositions) {
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+    }
+    // ~5 m padding so the outline doesn't clip the edge nodes.
+    const padLat = 0.00005;
+    const padLng = 0.00005;
+    return [
+      [minLat - padLat, minLng - padLng],
+      [maxLat + padLat, maxLng + padLng],
+    ];
+  })();
+
   // Build live steps from route data
   const currentIndex = (currentVisitor.routeNodeIds || []).indexOf(currentVisitor.currentNodeId);
   const nextStep = (currentVisitor.routeSteps || []).find((step) => {
@@ -544,6 +571,34 @@ export default function MapNavigationPage() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+
+          {/* Floorplan image — overlaid inside the building's node bbox when
+              the location has one. Sits above OSM tiles so the actual building
+              layout is what the visitor sees, not just street features. */}
+          {map?.floorplanImage && buildingBounds && (
+            <ImageOverlay
+              url={map.floorplanImage}
+              bounds={buildingBounds}
+              opacity={0.85}
+              zIndex={400}
+            />
+          )}
+
+          {/* Building footprint outline — gives the destination site a clear
+              visual identity over the surrounding streets/buildings on OSM. */}
+          {buildingBounds && (
+            <Rectangle
+              bounds={buildingBounds}
+              pathOptions={{
+                color: '#cd5c5c',
+                weight: 2,
+                opacity: 0.7,
+                fillColor: '#cd5c5c',
+                fillOpacity: map?.floorplanImage ? 0.05 : 0.12,
+                dashArray: '4 4',
+              }}
+            />
+          )}
 
           {/* Fit the map to show the visitor + remaining route + destination.
               Re-fits on route/destination change and once when GPS first arrives. */}
