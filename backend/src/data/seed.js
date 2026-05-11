@@ -81,9 +81,126 @@ function attachGeo(mapDef, origin) {
   return { ...mapDef, origin, nodes, edges };
 }
 
+// Inverse of attachGeo's toLatLng: turns a real (lat,lng) into the (x,y)
+// percentage on the site footprint defined by origin, so seed nodes can be
+// authored with real GPS coordinates and still round-trip through attachGeo.
+function geoToXY({ lat, lng }, origin) {
+  const { baseLat, baseLng, widthM, heightM } = origin;
+  const mPerDegLat = 110574;
+  const mPerDegLng = 111320 * Math.cos((baseLat * Math.PI) / 180);
+  const dyM = (lat - baseLat) * mPerDegLat;
+  const dxM = (lng - baseLng) * mPerDegLng;
+  return {
+    x: 50 + (dxM / widthM) * 100,
+    y: 50 - (dyM / heightM) * 100,
+  };
+}
+
+function geoDistanceM(a, b) {
+  const mPerDegLat = 110574;
+  const mPerDegLng = 111320 * Math.cos((a.lat * Math.PI) / 180);
+  const dy = (a.lat - b.lat) * mPerDegLat;
+  const dx = (a.lng - b.lng) * mPerDegLng;
+  return Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
+}
+
+function geoNode(node, origin) {
+  const { lat, lng, floor, ...rest } = node;
+  const { x, y } = geoToXY({ lat, lng }, origin);
+  return { ...rest, x, y, floor: floor || 1 };
+}
+
 function createSeedState() {
   const orgRuliba = 'org-ruliba';
   const locMain = 'loc-ruliba-main';
+  const orgTumba = 'org-rp-tumba';
+  const locTumba = 'loc-rp-tumba-main';
+
+  const tumbaOrigin = {
+    // Centred on the RP Tumba College campus footprint. The full bounding
+    // box of all surveyed offices (procurement included) fits inside a
+    // ~300 m × ~300 m rectangle.
+    baseLat: -1.69547,
+    baseLng: 29.92054,
+    widthM: 350,
+    heightM: 350,
+  };
+
+  const tumbaEntrance = { lat: -1.69560, lng: 29.91990 };
+  const tumbaReception = { lat: -1.69500, lng: 29.92010 };
+
+  const tumbaOffices = [
+    { id: 'clinic', label: 'Clinic', aliases: ['clinic', 'medical room', 'health centre', 'ivuriro'], lat: -1.694343, lng: 29.920102 },
+    { id: 'server-room', label: 'Server Room', aliases: ['server room', 'data centre', 'servers'], lat: -1.694322, lng: 29.920188 },
+    { id: 'it-lab-2', label: 'IT Lab II', aliases: ['it lab 2', 'it lab ii', 'it lab two'], lat: -1.694386, lng: 29.920038 },
+    { id: 'it-lab-1', label: 'IT Lab I', aliases: ['it lab 1', 'it lab i', 'it lab one'], lat: -1.694450, lng: 29.920059 },
+    { id: 'it-lab-4', label: 'IT Lab IV', aliases: ['it lab 4', 'it lab iv', 'it lab four'], lat: -1.694408, lng: 29.920081 },
+    { id: 'ett-lab-3', label: 'ETT Lab III', aliases: ['ett lab 3', 'ett lab iii', 'ett lab', 'electronics telecom lab'], lat: -1.694408, lng: 29.920038 },
+    { id: 'toilets', label: 'Toilets', aliases: ['toilet', 'toilette', 'toilets', 'wc', 'restroom', 'umusarani'], lat: -1.694369, lng: 29.920059 },
+    { id: 'it-lab-3', label: 'IT Lab III', aliases: ['it lab 3', 'it lab iii', 'it lab three'], lat: -1.694365, lng: 29.920059 },
+    { id: 'et-lab-2', label: 'ET Lab II', aliases: ['et lab 2', 'et lab ii', 'electrical lab two'], lat: -1.694300, lng: 29.919759 },
+    // Source row "Examination Test Room -1694343" — missing decimal point in the survey; corrected to match the surrounding cluster.
+    { id: 'examination-test-room', label: 'Examination Test Room', aliases: ['exam room', 'examination room', 'test room', 'examination test room'], lat: -1.694343, lng: 29.919887 },
+    { id: 'academic-services-unit', label: 'Academic Services Unit', aliases: ['academic services', 'asu', 'registrar', 'academic services unit'], lat: -1.694221, lng: 29.919891 },
+    { id: 'renewable-energy-lab', label: 'Renewable Energy Lab', aliases: ['renewable energy lab', 're lab'], lat: -1.694199, lng: 29.919891 },
+    { id: 'common-course-department', label: 'Common Course Department', aliases: ['common course', 'common course department', 'ccd'], lat: -1.694306, lng: 29.919719 },
+    { id: 'network-lab', label: 'Network Lab', aliases: ['network lab', 'networking lab'], lat: -1.694242, lng: 29.919784 },
+    { id: 'career-support-office', label: 'Career Support Office', aliases: ['career support', 'career office', 'cso', 'career support office'], lat: -1.694349, lng: 29.919848 },
+    { id: 'business-incubation-center', label: 'Business Incubation Center', aliases: ['business incubation', 'incubation centre', 'bic', 'business incubation center'], lat: -1.694178, lng: 29.919311 },
+    { id: 'it-department', label: 'IT Department', aliases: ['it department', 'information technology department'], lat: -1.694264, lng: 29.919376 },
+    { id: 'it-lab-7', label: 'IT Lab 7', aliases: ['it lab 7', 'it lab seven'], lat: -1.694242, lng: 29.919333 },
+    { id: 'it-lab-6', label: 'IT Lab 6', aliases: ['it lab 6', 'it lab six'], lat: -1.694242, lng: 29.919376 },
+    { id: 'dc-machine-lab', label: 'DC Machine Lab', aliases: ['dc machine lab', 'dc lab', 'dc machines'], lat: -1.694199, lng: 29.919419 },
+    { id: 'renewable-energy-department', label: 'Renewable Energy Department', aliases: ['renewable energy department', 're department'], lat: -1.694242, lng: 29.919440 },
+    { id: 'mechanical-workshop', label: 'Mechanical Workshop', aliases: ['mechanical workshop', 'mech workshop'], lat: -1.694135, lng: 29.919376 },
+    { id: 'electrical-workshop', label: 'Electrical Workshop', aliases: ['electrical workshop', 'elec workshop'], lat: -1.694178, lng: 29.919440 },
+    { id: 'administrator-office', label: 'Administrator Office', aliases: ['administrator', 'administrator office'], lat: -1.694993, lng: 29.920728 },
+    { id: 'administrative-staff-office', label: 'Administrative Staff Office', aliases: ['administrative staff', 'admin staff office'], lat: -1.694900, lng: 29.920680 },
+    { id: 'office-of-procurement', label: 'Office of the Procurement', aliases: ['procurement', 'procurement office', 'office of the procurement'], lat: -1.696813, lng: 29.921761 },
+    { id: 'board-room', label: 'Board Room', aliases: ['board room', 'boardroom'], lat: -1.694930, lng: 29.920720 },
+    { id: 'office-of-department-principal', label: 'Office of the Department Principal', aliases: ['principal office', 'department principal', 'department principle', 'office of department principal'], lat: -1.694900, lng: 29.920730 },
+    { id: 'main-hall', label: 'Main Hall', aliases: ['main hall', 'auditorium'], lat: -1.694960, lng: 29.920740 },
+    { id: 'library', label: 'Library', aliases: ['library', 'isomero'], lat: -1.694910, lng: 29.920280 },
+    { id: 'rooftop-restaurant', label: 'Rooftop Restaurant', aliases: ['rooftop restaurant', 'roof restaurant'], lat: -1.694950, lng: 29.920300 },
+    { id: 'enjoy-restaurant', label: 'Enjoy Restaurant', aliases: ['enjoy restaurant', 'cafeteria', 'canteen'], lat: -1.694900, lng: 29.920250 },
+    { id: 'gb-hostel', label: 'GB Hostel', aliases: ['gb hostel', 'girls hostel'], lat: -1.694890, lng: 29.920280 },
+    { id: 'nb-hostel', label: 'NB Hostel', aliases: ['nb hostel', 'boys hostel'], lat: -1.694960, lng: 29.920260 },
+  ];
+
+  const tumbaNodes = [
+    geoNode(
+      { id: 'entrance', label: 'Main Entrance', aliases: ['entrance', 'main gate', 'gate', 'irembo', 'site entrance'], type: 'checkpoint', zone: 'public', ...tumbaEntrance },
+      tumbaOrigin,
+    ),
+    geoNode(
+      { id: 'reception', label: 'Reception', aliases: ['reception', 'reception desk', 'front desk', 'accueil', 'akira abashyitsi'], type: 'office', zone: 'public', ...tumbaReception },
+      tumbaOrigin,
+    ),
+    ...tumbaOffices.map((office) =>
+      geoNode({ ...office, type: 'office', zone: 'public' }, tumbaOrigin),
+    ),
+  ];
+
+  const tumbaEdges = [
+    {
+      id: 'edge-tumba-entrance-reception',
+      from: 'entrance',
+      to: 'reception',
+      distanceM: geoDistanceM(tumbaEntrance, tumbaReception),
+      direction: 'straight',
+      directionHint: 'Walk from the main entrance to the Reception.',
+      isAccessible: true,
+    },
+    ...tumbaOffices.map((office) => ({
+      id: `edge-tumba-rec-${office.id}`,
+      from: 'reception',
+      to: office.id,
+      distanceM: geoDistanceM(tumbaReception, office),
+      direction: 'straight',
+      directionHint: `Walk from Reception to the ${office.label}.`,
+      isAccessible: true,
+    })),
+  ];
 
   return {
     organizations: [
@@ -99,6 +216,20 @@ function createSeedState() {
         createdAt: hoursAgo(720),
         createdBy: 'user-admin-1',
       },
+      {
+        id: orgTumba,
+        name: 'RP Tumba College',
+        description: 'Rwanda Polytechnic – Tumba College, a TVET institution in Northern Province offering IT, electronics, renewable energy and other engineering programs.',
+        contactEmail: 'info@tumbacollege.ac.rw',
+        contactPhone: '+250 788 000 010',
+        address: 'Tumba, Rulindo District, Northern Province, Rwanda',
+        logoUrl: null,
+        status: 'active',
+        // Older than Ruliba so existing tests that read locations[0]/organizations[0]
+        // (sorted DESC by created_at) keep resolving to the Ruliba seed.
+        createdAt: hoursAgo(1000),
+        createdBy: 'user-admin-1',
+      },
     ],
     locations: [
       {
@@ -112,6 +243,18 @@ function createSeedState() {
         qrCodeToken: 'SINARMS-RULIBA-MAIN',
         receptionistIds: ['user-rec-1'],
         createdAt: hoursAgo(700),
+      },
+      {
+        id: locTumba,
+        organizationId: orgTumba,
+        name: 'RP Tumba College - Main Campus',
+        address: 'Tumba, Rulindo District, Northern Province, Rwanda',
+        floorCount: 1,
+        description: 'RP Tumba College main campus covering the academic block (Clinic, IT/ET labs, Renewable Energy facilities, Academic Services), workshops (Mechanical, Electrical, DC Machine, Incubation Center), administration block (Administrator, Board Room, Department Principal, Main Hall) and student facilities (Library, Restaurants, Hostels).',
+        status: 'active',
+        qrCodeToken: 'SINARMS-TUMBA-MAIN',
+        receptionistIds: [],
+        createdAt: hoursAgo(980),
       },
     ],
     users: [
@@ -348,6 +491,13 @@ function createSeedState() {
         widthM: 140,
         heightM: 110,
       }),
+      // RP Tumba College main campus. Nodes are authored with real GPS
+      // coordinates from the campus survey and converted to the site
+      // footprint via geoNode so attachGeo's round-trip preserves them.
+      [locTumba]: attachGeo(
+        { floorplanImage: null, nodes: tumbaNodes, edges: tumbaEdges },
+        tumbaOrigin,
+      ),
     },
   };
 }
