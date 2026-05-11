@@ -13,6 +13,27 @@ snapshots and ML weights.
 This is a summary of everything in this folder so a reviewer can tell what
 was actually implemented (as opposed to what the design document asks for).
 
+### AI models at a glance
+
+The engine ships **two distinct ML models** with different jobs. They share
+one MiniLM encoder in memory but answer different questions:
+
+| Aspect            | Model 1 — Intent Classifier                               | Model 2 — FAQ Matcher                                  |
+| ----------------- | --------------------------------------------------------- | ------------------------------------------------------ |
+| **Job**           | "Where does this person want to go?"                      | "What is this person asking about?"                    |
+| **Input**         | Free-text destination ("hr office", "salle de réunion")   | Free-text question ("what time does reception open?")  |
+| **Output**        | A node id on the facility map + confidence + alternatives | An FAQ answer string + confidence + matched FAQ id     |
+| **Backed by**     | Literal/fuzzy alias match → DistilBERT → MiniLM cosine    | MiniLM cosine over `"<question>. keywords: …"`         |
+| **Trained?**      | Yes — fine-tuned monthly on the live graph                | No — zero-shot retrieval over admin-curated FAQs       |
+| **Source of truth** | Facility graph (admin-edited map nodes + aliases)       | FAQ table (admin-curated Q&A list)                     |
+| **Refresh hook**  | `/ai/refresh-graph` (after admin edits the map)           | `/ai/refresh-faq` (after admin edits FAQs)             |
+| **Fallback**      | Token-overlap dictionary scoring                          | Token-overlap Jaccard scoring                          |
+| **Used by**       | `/ai/classify-intent`, navigation branch of `/ai/chatbot` | FAQ branch of `/ai/chatbot`                            |
+
+`/ai/chatbot` runs both and picks one via a priority cascade (navigation
+keywords / high-confidence intent first, otherwise FAQ if it clears 0.55,
+otherwise cross-location hints, otherwise the classifier's alternatives).
+
 ### 1. Model 1 — Intent / Destination Classifier
 File: [models/intent_classifier.py](models/intent_classifier.py)
 
@@ -145,6 +166,29 @@ Six FastAPI TestClient tests that cover health, classification (EN + FR),
 routing, chatbot navigation vs FAQ branching, and live graph refresh. They
 run with **zero network access** because both models fall back to the
 token-overlap path when MiniLM is unreachable, keeping CI deterministic.
+
+### 9. Reported metrics
+
+Each model surfaces a **different** set of quality numbers because they
+solve different problems. This section is the canonical answer to "what is
+the accuracy?":
+
+| Model                       | Has training accuracy? | Where it lives                              | What it actually measures                                       |
+| --------------------------- | ---------------------- | ------------------------------------------- | --------------------------------------------------------------- |
+| Model 1 — Intent Classifier | **Yes**, when fine-tuned | `artifacts/training_report.json` (after `train_intent.py` runs) | Top-1 label accuracy on a held-out 10% split of the generated dataset. Target ≥ 0.88. |
+| Model 1 — fallback paths    | No                     | n/a                                         | Literal/fuzzy alias, MiniLM cosine, and token-overlap are *retrieval*, not classification — they have no train/test split. Tune via `CONFIDENCE_RESOLVE` / `CONFIDENCE_CONFIRM` instead. |
+| Model 2 — FAQ Matcher       | No (zero-shot)         | n/a                                         | Tune via `FAQ_MATCH_THRESHOLD`. There is no labelled dataset; quality is judged by precision@1 on a hand-curated eval set (not yet wired). |
+| Local chatbot retrieval     | **Yes**                | `artifacts/local_chatbot/meta.json`         | `top1_accuracy`, `top3_accuracy`, `mean_top1_similarity`, `precision_above_threshold` on the held-out split written at training time. |
+
+**Why no single "model accuracy" number for the engine as a whole.** Model 1
+in production is a *cascade* (literal → DistilBERT → MiniLM → token-overlap)
+with confidence-bucketed outputs (`resolved` / `confirm` / `retry`), and
+Model 2 is *retrieval over admin-edited content*. Reporting one accuracy
+figure would hide which path actually answered. The right diagnostic is:
+
+- **Did `artifacts/intent_model/` and `training_report.json` exist when the engine started?** If not, Model 1 is on its zero-shot fallback — train it (see step 4 of "Train the intent classifier end-to-end") to get a number.
+- **Are confidence buckets calibrated?** Watch the share of `resolved` vs `confirm` vs `retry` returned by `/ai/classify-intent` over real traffic and adjust the cutoffs in [app/config.py](app/config.py).
+- **Is the FAQ threshold right?** Watch how often `/ai/chatbot` returns the FAQ branch vs the fallback message and adjust `FAQ_MATCH_THRESHOLD`.
 
 ---
 
