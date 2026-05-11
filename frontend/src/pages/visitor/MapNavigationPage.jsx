@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Play, Pause, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2 } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -37,8 +37,10 @@ const activePersonIcon = L.divIcon({
   iconAnchor: [12, 12]
 });
 
-// Fits the map view to show the entire route
-function FitBounds({ positions }) {
+// Fits the map view to the route + visitor + destination — but only when the
+// route itself changes (or GPS first becomes available). Without a stable
+// fitKey, every GPS tick would re-fit and fight any manual panning.
+function FitBounds({ positions, fitKey }) {
   const map = useMap();
   useEffect(() => {
     const valid = (positions || []).filter(
@@ -51,7 +53,8 @@ function FitBounds({ positions }) {
     } else if (valid.length === 1) {
       map.setView(valid[0], 19);
     }
-  }, [map, positions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fitKey]);
   return null;
 }
 
@@ -126,14 +129,13 @@ export default function MapNavigationPage() {
   const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [livePosition, setLivePosition] = useState(null);
-  const [simulatedPosition, setSimulatedPosition] = useState(null);
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [locationError, setLocationError] = useState(null);
+  const [locationRetryToken, setLocationRetryToken] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeRail, setActiveRail] = useState('map');
   const [arrivalToast, setArrivalToast] = useState(null);
   const watchIdRef = useRef(null);
-  const simulationTimerRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
   const arrivalAnnouncedRef = useRef(null);
@@ -147,26 +149,42 @@ export default function MapNavigationPage() {
     }
   }, [currentVisitor?.id, routerLocation.state, setCurrentVisitor]);
 
-  // Live GPS tracking of the visitor's actual position
+  // Live GPS tracking of the visitor's actual position. The marker on the map
+  // follows the visitor in real time as they move. If the browser blocks or
+  // can't acquire a fix, we surface a prompt so the visitor can enable
+  // location services — navigation cannot start without a real origin.
   useEffect(() => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+      setLocationError('unsupported');
+      return undefined;
+    }
+    setLocationError(null);
     const wId = navigator.geolocation.watchPosition(
-      (pos) => setLivePosition([pos.coords.latitude, pos.coords.longitude]),
-      () => {},
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+      (pos) => {
+        setLivePosition([pos.coords.latitude, pos.coords.longitude]);
+        setLocationError(null);
+      },
+      (err) => {
+        if (err?.code === 1) setLocationError('denied');
+        else if (err?.code === 2) setLocationError('unavailable');
+        else if (err?.code === 3) setLocationError('timeout');
+        else setLocationError('unavailable');
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
     );
     watchIdRef.current = wId;
     return () => {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
-  }, []);
+  }, [locationRetryToken]);
 
-  // Snap the live/simulated position to the next route node and advance the
-  // backend's currentNodeId when within 8 m — that keeps the step list in sync.
+  // Snap the live position to the next route node and advance the backend's
+  // currentNodeId when within 8 m — that keeps the step list in sync as the
+  // visitor physically walks the route.
   const SNAP_RADIUS_M = 8;
   useEffect(() => {
     if (!currentVisitor?.id) return;
-    const probe = simulatedPosition || livePosition;
+    const probe = livePosition;
     if (!isValidLatLng(probe)) return;
     const mapObj = getLocationMap(state, currentVisitor.locationId);
     const routeIds = currentVisitor.routeNodeIds || [];
@@ -190,50 +208,12 @@ export default function MapNavigationPage() {
         break;
       }
     }
-  }, [simulatedPosition, livePosition, currentVisitor?.id, currentVisitor?.currentNodeId, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state, moveVisitor]);
+  }, [livePosition, currentVisitor?.id, currentVisitor?.currentNodeId, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state, moveVisitor]);
 
   // Reset snap guard whenever the route changes (e.g. reroute / switch location).
   useEffect(() => {
     lastAdvancedNodeRef.current = null;
   }, [currentVisitor?.destinationNodeId, currentVisitor?.locationId]);
-
-  // Indoor-demo walk: animates the blue dot along the polyline so the full
-  // flow can be shown without real GPS. Stops automatically at the destination.
-  useEffect(() => {
-    if (!isSimulating) {
-      if (simulationTimerRef.current) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-      setSimulatedPosition(null);
-      return;
-    }
-    if (!currentVisitor?.id) return;
-    const mapObj = getLocationMap(state, currentVisitor.locationId);
-    const positions = buildRoutePositions(mapObj, currentVisitor.routeNodeIds);
-    if (positions.length < 2) {
-      setIsSimulating(false);
-      return;
-    }
-    let i = 0;
-    setSimulatedPosition(positions[0]);
-    simulationTimerRef.current = setInterval(() => {
-      i += 1;
-      if (i >= positions.length) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-        setIsSimulating(false);
-        return;
-      }
-      setSimulatedPosition(positions[i]);
-    }, 700);
-    return () => {
-      if (simulationTimerRef.current) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-    };
-  }, [isSimulating, currentVisitor?.id, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state]);
 
   // Arrival announcement: when the visitor reaches their destination, play a
   // spoken cue and a soft chime, and surface a toast banner. We only announce
@@ -342,9 +322,12 @@ export default function MapNavigationPage() {
     ? getNodeLatLng(destinationNode)
     : (routeFallbackNode ? getNodeLatLng(routeFallbackNode) : null);
 
-  // Prefer the building's node/destination so the map opens on the site, not on the
-  // visitor's outdoor GPS. livePosition is used only as a "you are here" marker.
+  // Origin is the visitor's live GPS — the map always centers on where the
+  // visitor actually is. Building nodes are used only as fallback hints when
+  // GPS has not produced a fix yet (in which case the GPS-required overlay is
+  // shown over the map until a real position arrives).
   const defaultCenter = (() => {
+    if (isValidLatLng(livePosition)) return livePosition;
     if (isValidLatLng(currentNodePos)) return currentNodePos;
     if (isValidLatLng(destinationNodePos)) return destinationNodePos;
     if (location?.address) {
@@ -354,24 +337,41 @@ export default function MapNavigationPage() {
     return [-1.99585, 30.04020];
   })();
 
-  // Priority: simulated walk > real GPS > current node (server) > map default
-  const visitorPositionCandidate = simulatedPosition || livePosition || currentNodePos || defaultCenter;
+  // The visitor marker tracks the live GPS in real time. We only fall back to
+  // a static node/center when no GPS fix is available yet — and in that case
+  // the GPS prompt is shown so the user can enable location services.
+  const visitorPositionCandidate = livePosition || currentNodePos || defaultCenter;
   const visitorPosition = isValidLatLng(visitorPositionCandidate) ? visitorPositionCandidate : defaultCenter;
 
-  // Build route using real GPS trails from edges
-  const routePositions = buildRoutePositions(map, currentVisitor.routeNodeIds);
+  // Build the remaining route polyline starting at the visitor's current node
+  // (so completed segments fade out) and prepend the live GPS so the line
+  // visually anchors to where the visitor stands right now.
+  const upcomingRouteNodeIds = (() => {
+    const ids = currentVisitor.routeNodeIds || [];
+    if (!ids.length) return [];
+    const idx = ids.indexOf(currentVisitor.currentNodeId);
+    return idx >= 0 ? ids.slice(idx) : ids;
+  })();
+  const upcomingRoutePositions = buildRoutePositions(map, upcomingRouteNodeIds);
+  const fullRoutePositions = buildRoutePositions(map, currentVisitor.routeNodeIds);
+  const liveRoutePolyline = (() => {
+    const segments = [...upcomingRoutePositions];
+    if (isValidLatLng(livePosition)) {
+      if (segments.length === 0 || distanceMeters(livePosition, segments[0]) > 1) {
+        segments.unshift(livePosition);
+      }
+    }
+    return segments;
+  })();
 
-  // Fit only to the building's route/nodes — never include outdoor GPS (livePosition),
-  // otherwise Leaflet zooms out to fit the user's real-world location and the building.
-  const indoorPositions = [
-    ...routePositions,
-    ...(isValidLatLng(currentNodePos) ? [currentNodePos] : []),
+  // Fit bounds covers the visitor's live position, the upcoming route, and
+  // the destination — so as the visitor moves, the view tracks the remaining
+  // journey rather than the static building footprint.
+  const allPositions = [
+    ...(isValidLatLng(livePosition) ? [livePosition] : []),
+    ...liveRoutePolyline,
     ...(isValidLatLng(destinationNodePos) ? [destinationNodePos] : []),
   ].filter(isValidLatLng);
-
-  const allPositions = indoorPositions.length
-    ? indoorPositions
-    : [defaultCenter].filter(isValidLatLng);
 
   // Build live steps from route data
   const currentIndex = (currentVisitor.routeNodeIds || []).indexOf(currentVisitor.currentNodeId);
@@ -525,18 +525,6 @@ export default function MapNavigationPage() {
       <div className={`relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl bg-slate-100/50 dark:bg-slate-900 z-0 transition-all duration-300 ${isFullscreen ? 'fixed inset-0 z-[500] rounded-none border-0' : 'h-[55vh] min-h-[320px] flex-shrink-0'}`}>
         <div className="absolute top-4 right-4 z-[650] flex gap-2">
           <button
-            onClick={() => setIsSimulating((prev) => !prev)}
-            aria-label={isSimulating ? t('visitor.nav.simStop') : t('visitor.nav.simStart')}
-            title={isSimulating ? t('visitor.nav.simStop') : t('visitor.nav.simStart')}
-            className={`p-2.5 rounded-xl shadow-lg border transition-colors ${
-              isSimulating
-                ? 'bg-[var(--color-brand-terracotta)] dark:bg-red-500 border-transparent text-white'
-                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700'
-            }`}
-          >
-            {isSimulating ? <Pause size={20} /> : <Play size={20} />}
-          </button>
-          <button
             onClick={() => setIsFullscreen(!isFullscreen)}
             className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors"
           >
@@ -557,14 +545,26 @@ export default function MapNavigationPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* Fit the map to show the full route */}
-          <FitBounds positions={allPositions.length > 1 ? allPositions : [defaultCenter]} />
+          {/* Fit the map to show the visitor + remaining route + destination.
+              Re-fits on route/destination change and once when GPS first arrives. */}
+          <FitBounds
+            positions={allPositions.length > 1 ? allPositions : [defaultCenter]}
+            fitKey={`${(currentVisitor.routeNodeIds || []).join('|')}::${currentVisitor.destinationNodeId || ''}::${currentVisitor.currentNodeId || ''}::${livePosition ? 'gps' : 'nogps'}`}
+          />
 
-          {/* Route path — uses GPS trail from recorded edges */}
-          {routePositions.length > 1 && (
+          {/* Completed segments — faded, so the visitor can see where they've been */}
+          {fullRoutePositions.length > 1 && (
             <Polyline
-              positions={routePositions}
-              pathOptions={{ color: '#cd5c5c', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
+              positions={fullRoutePositions}
+              pathOptions={{ color: '#cd5c5c', weight: 4, opacity: 0.25, lineCap: 'round', lineJoin: 'round', dashArray: '6 8' }}
+            />
+          )}
+
+          {/* Live route — origin is the visitor's current GPS, ending at the destination */}
+          {liveRoutePolyline.length > 1 && (
+            <Polyline
+              positions={liveRoutePolyline}
+              pathOptions={{ color: '#cd5c5c', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
             />
           )}
 
@@ -604,6 +604,46 @@ export default function MapNavigationPage() {
             </Marker>
           )}
         </MapContainer>
+
+        {/* GPS required overlay — blocks the map until the visitor's real
+            position is available, since the origin must always be where they
+            actually are. Different copy for denied / unavailable / unsupported. */}
+        {!livePosition && locationError && (
+          <div className="absolute inset-0 z-[680] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+            <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-6 text-center">
+              <div className="mx-auto w-12 h-12 rounded-full bg-red-50 dark:bg-red-500/15 text-[var(--color-brand-terracotta)] dark:text-red-400 flex items-center justify-center mb-3">
+                <LocateFixed size={24} strokeWidth={2.2} />
+              </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+                {t('visitor.nav.locationRequired.title')}
+              </h3>
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                {locationError === 'denied'
+                  ? t('visitor.nav.locationRequired.denied')
+                  : locationError === 'unsupported'
+                  ? t('visitor.nav.locationRequired.unsupported')
+                  : t('visitor.nav.locationRequired.unavailable')}
+              </p>
+              <button
+                type="button"
+                onClick={() => setLocationRetryToken((v) => v + 1)}
+                className="mt-4 inline-flex items-center gap-2 text-xs font-bold bg-[var(--color-brand-terracotta)] dark:bg-red-500 text-white px-4 py-2.5 rounded-xl shadow-sm hover:scale-105 transition-transform"
+              >
+                <LocateFixed size={14} /> {t('visitor.nav.locationRequired.enable')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Acquiring-fix indicator — non-blocking, while we wait for the first GPS sample */}
+        {!livePosition && !locationError && (
+          <div className="absolute top-4 left-4 z-[660] flex items-center gap-2 px-3 py-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
+            <Loader2 size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400 animate-spin" />
+            <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
+              {t('visitor.nav.acquiringLocation')}
+            </span>
+          </div>
+        )}
 
         {/* Floating location pill at bottom of map */}
         {!isFullscreen && (
