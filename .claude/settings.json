@@ -32,7 +32,10 @@
       "Bash(curl -fsS http://127.0.0.1:8001/)",
       "Bash(curl -fsS http://127.0.0.1:8001/healthz)",
       "Bash(curl -fsS http://127.0.0.1:8001/openapi.json)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(npx eslint *)",
+      "Bash(echo \"ESLINT EXIT: $?\")",
+      "Bash(docker compose *)"
     ]
   }
 }

@@ -4,6 +4,18 @@ Smart Institutional Navigation and Resource Mapping System for Ruliba Clays Ltd.
 
 See [RUNGUIDE.md](RUNGUIDE.md) for the full install and run walkthrough.
 
+## Run everything in Docker
+
+The whole stack (MySQL, backend, AI engine, frontend) runs with one command:
+
+```bash
+docker compose up --build
+```
+
+Then open <http://localhost:5173>. The backend creates the schema and seeds
+demo data automatically on first boot. See the **Docker** section of
+[RUNGUIDE.md](RUNGUIDE.md#11-run-everything-in-docker) for details.
+
 ## Monorepo layout
 
 | Folder       | Role                                                                                     |

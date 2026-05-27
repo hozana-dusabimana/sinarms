@@ -1,0 +1,102 @@
+# SINARMS — full stack in Docker (development mode, hot reload).
+#
+#   docker compose up --build
+#
+# Services and host ports:
+#   frontend  http://localhost:5173   (Vite dev server, open this)
+#   backend   http://localhost:4000   (Express API + Socket.io)
+#   ai        http://localhost:8001   (FastAPI engine, /healthz)
+#   db        localhost:3307          (MySQL 8 — 3307 to avoid clashing with
+#                                       a local XAMPP MySQL on 3306)
+#
+# The backend auto-creates the schema and seeds demo data on first boot.
+
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: sinarms
+      MYSQL_DATABASE: sinarms
+    ports:
+      - "3307:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-psinarms"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: "4000"
+      DB_HOST: db
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: sinarms
+      DB_NAME: sinarms
+      JWT_SECRET: docker-dev-secret-change-me
+      JWT_EXPIRES_IN: 8h
+      CORS_ORIGIN: http://localhost:5173
+      FRONTEND_URL: http://localhost:5173
+      AI_ENGINE_URL: http://ai:8000
+      AI_ENGINE_TIMEOUT_MS: "1500"
+      AI_ENGINE_DISABLED: "0"
+      # Optional: paste an OpenRouter key here to enable the polish layer.
+      OPENROUTER_API_KEY: ""
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  ai:
+    build: ./ai
+    depends_on:
+      backend:
+        # Wait until the backend is seeded so the AI engine's startup fetch of
+        # maps/FAQ returns real data.
+        condition: service_healthy
+    environment:
+      SINARMS_BACKEND_URL: http://backend:4000
+      AI_HOST: 0.0.0.0
+      AI_PORT: "8000"
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./ai:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    environment:
+      # Vite dev-server proxy forwards /api and /ai to the backend service.
+      BACKEND_PROXY_TARGET: http://backend:4000
+      VITE_USE_POLLING: "true"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  db_data:

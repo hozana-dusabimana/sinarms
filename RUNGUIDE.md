@@ -179,6 +179,52 @@ Shows the matched question, similarity score, and the next two alternatives so
 it is clear *why* the bot answered the way it did. Type `:meta` to print the
 training run metadata (model id, train size, accuracy), `:q` to quit.
 
+## 11. Run everything in Docker
+
+If you have Docker Desktop, you can skip the manual setup above and run the
+whole stack — MySQL, backend, AI engine, and frontend — with one command. No
+local Node, Python, or MySQL install is needed.
+
+```bash
+docker compose up --build
+```
+
+Then open <http://localhost:5173>.
+
+What you get:
+
+| Service    | Host URL                  | Notes                                            |
+|------------|---------------------------|--------------------------------------------------|
+| frontend   | http://localhost:5173     | Vite dev server with hot reload — open this      |
+| backend    | http://localhost:4000     | Express API; auto-migrates and seeds on boot     |
+| ai         | http://localhost:8001     | FastAPI engine (`/healthz`)                      |
+| db         | localhost:3307            | MySQL 8 (3307 so it won't clash with XAMPP)      |
+
+Notes:
+
+- **Hot reload** — `backend/`, `frontend/`, and `ai/` source folders are
+  bind-mounted, so edits on the host reload live inside the containers.
+- **First build is slow** — the AI image bakes the multilingual MiniLM model in
+  so the engine works fully offline afterwards (no runtime download). Expect a
+  few minutes and a multi-GB image the first time.
+- **Demo logins** are the same as section 7. Seed data is created automatically;
+  you do not need to run `npm run migrate`.
+- **OpenRouter polish** — set `OPENROUTER_API_KEY` under the `backend` service in
+  `docker-compose.yml` (or export it before `up`) to enable it.
+- **Reset the database** — `docker compose down -v` removes the `db_data`
+  volume so the next `up` reseeds from scratch.
+- **Rebuild after dependency changes** — if you change `package.json` or
+  `requirements.txt`, run `docker compose up --build` and, if needed,
+  `docker compose down -v` to drop the cached `node_modules` volumes.
+
+Common issues:
+
+- **Port already in use** — stop any local backend/frontend/MySQL, or change the
+  left-hand side of the `ports:` mappings in `docker-compose.yml`.
+- **Frontend can't reach the API** — confirm the `backend` container is healthy
+  (`docker compose ps`); the Vite proxy targets `http://backend:4000` inside the
+  Docker network.
+
 ## One-terminal shortcut (optional)
 
 If you'd rather not juggle three terminals, in three separate shells run:

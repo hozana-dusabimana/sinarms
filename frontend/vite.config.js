@@ -2,18 +2,26 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
+// Backend target for the dev-server proxy. Defaults to localhost for native
+// `npm run dev`; docker-compose sets it to the backend service hostname.
+const backendTarget = process.env.BACKEND_PROXY_TARGET || 'http://localhost:4000'
+// File-event watching is unreliable across Docker Desktop bind mounts on
+// Windows/macOS, so fall back to polling when running in a container.
+const usePolling = process.env.VITE_USE_POLLING === 'true'
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     host: '0.0.0.0',
+    watch: usePolling ? { usePolling: true } : undefined,
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: backendTarget,
         changeOrigin: true,
       },
       '/ai': {
-        target: 'http://localhost:4000',
+        target: backendTarget,
         changeOrigin: true,
       },
     },

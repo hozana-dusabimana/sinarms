@@ -1,0 +1,10 @@
+venv
+.venv
+__pycache__
+*.py[cod]
+.pytest_cache
+artifacts/local_chatbot
+data/conversation_log.csv
+data/external/*.zip
+data/external/quora_duplicate_questions.*
+*.log
