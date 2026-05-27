@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, User, Hash, ArrowRight, Loader, QrCode } from 'lucide-react';
+import { MapPin, User, Hash, ArrowRight, ArrowLeft, Loader, QrCode, Check } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -58,6 +58,7 @@ export default function CheckInPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
   const [touched, setTouched] = useState({ name: false, idOrPhone: false });
+  const [step, setStep] = useState(0); // 0 = location, 1 = identity, 2 = destination
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedLocationId, setSelectedLocationId] = useState('');
   const [selectedDestination, setSelectedDestination] = useState('');
@@ -139,12 +140,43 @@ export default function CheckInPage() {
       });
   }, [isReady, searchParams, qrCheckin, navigate, setSearchParams, language]);
 
+  const TOTAL_STEPS = 3;
+  const steps = [
+    t('visitor.checkin.step.location'),
+    t('visitor.checkin.step.identity'),
+    t('visitor.checkin.step.destination'),
+  ];
+  const destinationChosen =
+    Boolean(selectedDestination) &&
+    (selectedDestination !== 'other' || formData.destination.trim().length > 0);
+  const isStepValid = (s) => {
+    if (s === 0) return Boolean(selectedLocationId);
+    if (s === 1) return !nameError && !idOrPhoneError;
+    if (s === 2) return destinationChosen;
+    return true;
+  };
+  const goNext = () => {
+    if (step === 1) setTouched({ name: true, idOrPhone: true });
+    if (!isStepValid(step)) return;
+    setStep((s) => Math.min(s + 1, TOTAL_STEPS - 1));
+  };
+  const goBack = () => setStep((s) => Math.max(s - 1, 0));
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // The form spans multiple steps. Submitting from a non-final step (button
+    // or Enter key) just advances to the next step instead of registering.
+    if (step < TOTAL_STEPS - 1) {
+      goNext();
+      return;
+    }
+
     setTouched({ name: true, idOrPhone: true });
 
     if (nameError || idOrPhoneError) {
       // Surface the inline errors instead of submitting an invalid form.
+      setStep(1);
       return;
     }
 
@@ -261,165 +293,246 @@ export default function CheckInPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.location')}</label>
-            <div className="relative group">
-              <select
-                value={selectedLocationId}
-                onChange={(e) => {
-                  setSelectedLocationId(e.target.value);
-                  setSelectedDestination('');
-                  setFormData((prev) => ({ ...prev, destination: '' }));
-                }}
-                className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
-              >
-                {(state.locations || [])
-                  .filter((location) => location.status === 'active')
-                  .map((location) => {
-                    const orgName = state.organizations.find((org) => org.id === location.organizationId && org.status === 'active')?.name;
-                    if (!orgName) return null;
-                    return (
-                      <option key={location.id} value={location.id}>
-                        {`${orgName} | ${location.name}`}
-                      </option>
-                    );
-                  })}
-              </select>
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.fullName')}</label>
-            <div className="relative group">
-              <User size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showNameError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
-              <input
-                type="text"
-                required
-                aria-invalid={Boolean(showNameError)}
-                aria-describedby={showNameError ? 'visitor-name-error' : undefined}
-                className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
-                  showNameError
-                    ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
-                    : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
-                }`}
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
-              />
-            </div>
-            {showNameError && (
-              <p id="visitor-name-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
-                {nameError}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.idOrPhone')}</label>
-            <div className="relative group">
-              <Hash size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showIdOrPhoneError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
-              <input
-                type="text"
-                required
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder={t('visitor.checkin.idOrPhoneHint')}
-                aria-invalid={Boolean(showIdOrPhoneError)}
-                aria-describedby={showIdOrPhoneError ? 'visitor-idphone-error' : 'visitor-idphone-hint'}
-                className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
-                  showIdOrPhoneError
-                    ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
-                    : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
-                }`}
-                value={formData.idOrPhone}
-                onChange={(e) => setFormData({ ...formData, idOrPhone: e.target.value })}
-                onBlur={() => setTouched((prev) => ({ ...prev, idOrPhone: true }))}
-              />
-            </div>
-            {showIdOrPhoneError ? (
-              <p id="visitor-idphone-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
-                {idOrPhoneError}
-              </p>
-            ) : (
-              <p id="visitor-idphone-hint" className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-1 pt-1">
-                {t('visitor.checkin.idOrPhoneHint')}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-1 pt-2">
-            <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t('visitor.checkin.dest')}</label>
-            <select
-              value={selectedDestination}
-              onChange={(e) => {
-                const next = e.target.value;
-                setSelectedDestination(next);
-                if (next && next !== 'other') {
-                  const label = destinationOptions.find((option) => option.value === next)?.label || '';
-                  setFormData((prev) => ({ ...prev, destination: label }));
-                } else {
-                  setFormData((prev) => ({ ...prev, destination: '' }));
-                }
-              }}
-              className="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all shadow-inner"
-              required
-            >
-              <option value="" disabled>
-                {t('visitor.checkin.selectDest')}
-              </option>
-              {destinationOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-              <option value="other">{t('visitor.checkin.other')}</option>
-            </select>
-
-            {selectedDestination === 'other' ? (
-              <textarea
-                required
-                rows={3}
-                placeholder={t('visitor.checkin.destPlaceholder')}
-                className="mt-3 w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
-                value={formData.destination}
-                onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
-              />
-            ) : null}
+          {/* Step indicator */}
+          <div className="flex items-center px-1">
+            {steps.map((label, i) => (
+              <Fragment key={label}>
+                <div className="flex flex-col items-center">
+                  <div
+                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                      i < step
+                        ? 'bg-[var(--color-brand-terracotta)] text-white'
+                        : i === step
+                          ? 'bg-[var(--color-brand-terracotta)] text-white ring-4 ring-red-500/20'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {i < step ? <Check size={16} strokeWidth={3} /> : i + 1}
+                  </div>
+                  <span
+                    className={`mt-1.5 text-[10px] font-semibold tracking-wide text-center ${
+                      i <= step ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </div>
+                {i < steps.length - 1 && (
+                  <div
+                    className={`flex-1 h-0.5 mx-1.5 mb-5 rounded-full transition-all ${
+                      i < step ? 'bg-[var(--color-brand-terracotta)]' : 'bg-slate-200 dark:bg-slate-700'
+                    }`}
+                  />
+                )}
+              </Fragment>
+            ))}
           </div>
 
           <AnimatePresence mode="wait">
-            {isProcessing ? (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="w-full py-4 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-3 border border-slate-200 dark:border-slate-700"
-              >
-                <Loader className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400" size={24} />
-                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide">
-                  {t('visitor.checkin.analyzing')}
-                </span>
-              </motion.div>
-            ) : (
-              <motion.button
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                whileHover={isFormValid ? { scale: 1.02 } : undefined}
-                whileTap={isFormValid ? { scale: 0.98 } : undefined}
-                type="submit"
-                disabled={!isFormValid}
-                aria-disabled={!isFormValid}
-                className={`w-full font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
-                  isFormValid
-                    ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
-                }`}
-              >
-                {t('visitor.checkin.start')}
-                <ArrowRight size={20} className={isFormValid ? 'group-hover:translate-x-1 transition-transform' : ''} />
-              </motion.button>
-            )}
+            <motion.div
+              key={step}
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.2 }}
+              className="space-y-6"
+            >
+              {/* Step 1 — Location */}
+              {step === 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.location')}</label>
+                  <div className="relative group">
+                    <select
+                      value={selectedLocationId}
+                      onChange={(e) => {
+                        setSelectedLocationId(e.target.value);
+                        setSelectedDestination('');
+                        setFormData((prev) => ({ ...prev, destination: '' }));
+                      }}
+                      className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
+                    >
+                      {(state.locations || [])
+                        .filter((location) => location.status === 'active')
+                        .map((location) => {
+                          const orgName = state.organizations.find((org) => org.id === location.organizationId && org.status === 'active')?.name;
+                          if (!orgName) return null;
+                          return (
+                            <option key={location.id} value={location.id}>
+                              {`${orgName} | ${location.name}`}
+                            </option>
+                          );
+                        })}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2 — Your details (name + ID/phone) */}
+              {step === 1 && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.fullName')}</label>
+                    <div className="relative group">
+                      <User size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showNameError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
+                      <input
+                        type="text"
+                        required
+                        autoFocus
+                        aria-invalid={Boolean(showNameError)}
+                        aria-describedby={showNameError ? 'visitor-name-error' : undefined}
+                        className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
+                          showNameError
+                            ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
+                            : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
+                        }`}
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
+                      />
+                    </div>
+                    {showNameError && (
+                      <p id="visitor-name-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
+                        {nameError}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.idOrPhone')}</label>
+                    <div className="relative group">
+                      <Hash size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showIdOrPhoneError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
+                      <input
+                        type="text"
+                        required
+                        inputMode="tel"
+                        autoComplete="tel"
+                        placeholder={t('visitor.checkin.idOrPhoneHint')}
+                        aria-invalid={Boolean(showIdOrPhoneError)}
+                        aria-describedby={showIdOrPhoneError ? 'visitor-idphone-error' : 'visitor-idphone-hint'}
+                        className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
+                          showIdOrPhoneError
+                            ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
+                            : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
+                        }`}
+                        value={formData.idOrPhone}
+                        onChange={(e) => setFormData({ ...formData, idOrPhone: e.target.value })}
+                        onBlur={() => setTouched((prev) => ({ ...prev, idOrPhone: true }))}
+                      />
+                    </div>
+                    {showIdOrPhoneError ? (
+                      <p id="visitor-idphone-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
+                        {idOrPhoneError}
+                      </p>
+                    ) : (
+                      <p id="visitor-idphone-hint" className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-1 pt-1">
+                        {t('visitor.checkin.idOrPhoneHint')}
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Step 3 — Destination */}
+              {step === 2 && (
+                <div className="space-y-1">
+                  <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t('visitor.checkin.dest')}</label>
+                  <select
+                    value={selectedDestination}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      setSelectedDestination(next);
+                      if (next && next !== 'other') {
+                        const label = destinationOptions.find((option) => option.value === next)?.label || '';
+                        setFormData((prev) => ({ ...prev, destination: label }));
+                      } else {
+                        setFormData((prev) => ({ ...prev, destination: '' }));
+                      }
+                    }}
+                    className="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all shadow-inner"
+                    required
+                  >
+                    <option value="" disabled>
+                      {t('visitor.checkin.selectDest')}
+                    </option>
+                    {destinationOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                    <option value="other">{t('visitor.checkin.other')}</option>
+                  </select>
+
+                  {selectedDestination === 'other' ? (
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder={t('visitor.checkin.destPlaceholder')}
+                      className="mt-3 w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
+                      value={formData.destination}
+                      onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
+                    />
+                  ) : null}
+                </div>
+              )}
+            </motion.div>
           </AnimatePresence>
+
+          {/* Step navigation */}
+          {isProcessing ? (
+            <div className="w-full py-4 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-3 border border-slate-200 dark:border-slate-700">
+              <Loader className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400" size={24} />
+              <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide">
+                {t('visitor.checkin.analyzing')}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              {step > 0 && (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="flex items-center justify-center gap-1.5 px-5 py-4 rounded-xl font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
+                >
+                  <ArrowLeft size={18} /> {t('visitor.checkin.back')}
+                </button>
+              )}
+
+              {step < TOTAL_STEPS - 1 ? (
+                <motion.button
+                  whileHover={isStepValid(step) ? { scale: 1.02 } : undefined}
+                  whileTap={isStepValid(step) ? { scale: 0.98 } : undefined}
+                  type="button"
+                  onClick={goNext}
+                  disabled={!isStepValid(step)}
+                  aria-disabled={!isStepValid(step)}
+                  className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
+                    isStepValid(step)
+                      ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
+                  }`}
+                >
+                  {t('visitor.checkin.next')}
+                  <ArrowRight size={20} className={isStepValid(step) ? 'group-hover:translate-x-1 transition-transform' : ''} />
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileHover={isFormValid && destinationChosen ? { scale: 1.02 } : undefined}
+                  whileTap={isFormValid && destinationChosen ? { scale: 0.98 } : undefined}
+                  type="submit"
+                  disabled={!isFormValid || !destinationChosen}
+                  aria-disabled={!isFormValid || !destinationChosen}
+                  className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
+                    isFormValid && destinationChosen
+                      ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
+                  }`}
+                >
+                  {t('visitor.checkin.start')}
+                  <ArrowRight size={20} className={isFormValid && destinationChosen ? 'group-hover:translate-x-1 transition-transform' : ''} />
+                </motion.button>
+              )}
+            </div>
+          )}
         </form>
       </motion.div>
     </div>
