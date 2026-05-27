@@ -45,16 +45,25 @@ const receptionistPermissions = {
 // origin.widthM/heightM map that rectangle onto meters on the ground,
 // so each node gets a realistic lat/lng for Leaflet/OSM.
 function attachGeo(mapDef, origin) {
-  const { baseLat, baseLng, widthM, heightM } = origin;
+  const { baseLat, baseLng, widthM, heightM, rotationDeg = 0 } = origin;
   const mPerDegLat = 110574;
   const mPerDegLng = 111320 * Math.cos((baseLat * Math.PI) / 180);
+  const theta = (rotationDeg * Math.PI) / 180;
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
 
   function toLatLng(x, y) {
-    const dxM = ((x - 50) / 100) * widthM;
-    const dyM = ((50 - y) / 100) * heightM; // screen y grows downward; north = lower y
+    // Axis-aligned site offsets in metres (before rotation): east grows with x,
+    // north grows as y shrinks (screen y points downward).
+    const e0 = ((x - 50) / 100) * widthM;
+    const n0 = ((50 - y) / 100) * heightM;
+    // Rotate the footprint so the surveyed control points line up with the real
+    // site orientation. rotationDeg = 0 leaves the footprint north-aligned.
+    const eastM = e0 * cosT - n0 * sinT;
+    const northM = e0 * sinT + n0 * cosT;
     return {
-      lat: baseLat + dyM / mPerDegLat,
-      lng: baseLng + dxM / mPerDegLng,
+      lat: baseLat + northM / mPerDegLat,
+      lng: baseLng + eastM / mPerDegLng,
     };
   }
 
@@ -85,14 +94,72 @@ function attachGeo(mapDef, origin) {
 // percentage on the site footprint defined by origin, so seed nodes can be
 // authored with real GPS coordinates and still round-trip through attachGeo.
 function geoToXY({ lat, lng }, origin) {
-  const { baseLat, baseLng, widthM, heightM } = origin;
+  const { baseLat, baseLng, widthM, heightM, rotationDeg = 0 } = origin;
   const mPerDegLat = 110574;
   const mPerDegLng = 111320 * Math.cos((baseLat * Math.PI) / 180);
-  const dyM = (lat - baseLat) * mPerDegLat;
-  const dxM = (lng - baseLng) * mPerDegLng;
+  const theta = (rotationDeg * Math.PI) / 180;
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
+  const northM = (lat - baseLat) * mPerDegLat;
+  const eastM = (lng - baseLng) * mPerDegLng;
+  // Un-rotate back into axis-aligned site offsets before scaling to x/y %.
+  const e0 = eastM * cosT + northM * sinT;
+  const n0 = -eastM * sinT + northM * cosT;
   return {
-    x: 50 + (dxM / widthM) * 100,
-    y: 50 - (dyM / heightM) * 100,
+    x: 50 + (e0 / widthM) * 100,
+    y: 50 - (n0 / heightM) * 100,
+  };
+}
+
+// Georeferences an abstract (x%, y%) schematic onto the real world from two
+// surveyed GPS control points. Two points fix a unique translation + rotation
+// + scale, so the two named schematic nodes land exactly on their real
+// coordinates and every other node rides along the same transform — which is
+// how we lay out the rest of a factory/office site from just a couple of known
+// pins. Returns an `origin` consumable by attachGeo (with rotationDeg).
+//
+// The two control points here sit on the same site corridor line (identical
+// y), which fixes the east–west scale and the rotation but leaves the
+// north–south scale free; we keep the schematic's authored aspect ratio for
+// that axis (passed as widthM:heightM).
+function solveRotatedOrigin(anchorA, anchorB, aspect) {
+  const mPerDegLat = 110574;
+  const mPerDegLng = 111320 * Math.cos((anchorA.lat * Math.PI) / 180);
+
+  // Real ground vector A -> B (metres, east/north) and its bearing.
+  const eastM = (anchorB.lng - anchorA.lng) * mPerDegLng;
+  const northM = (anchorB.lat - anchorA.lat) * mPerDegLat;
+  const realLen = Math.hypot(eastM, northM);
+  const realBearing = Math.atan2(northM, eastM);
+
+  // Schematic vector A -> B in % units (north = 50 - y) and its bearing.
+  const dxPct = anchorB.x - anchorA.x;
+  const dnPct = anchorA.y - anchorB.y; // north component: (50 - yB) - (50 - yA)
+  const schemLenPct = Math.hypot(dxPct, dnPct);
+  const schemBearing = Math.atan2(dnPct, dxPct);
+
+  const theta = realBearing - schemBearing;
+  // Control points share a corridor line, so their schematic span is purely
+  // along x — widthM is the full-width scale that makes that span match the
+  // real ground length; heightM follows the authored aspect ratio.
+  const widthM = (realLen / schemLenPct) * 100;
+  const heightM = widthM / aspect;
+
+  // Solve the base (lat/lng of the footprint centre x=50,y=50) so anchorA maps
+  // exactly onto its surveyed GPS.
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
+  const e0 = ((anchorA.x - 50) / 100) * widthM;
+  const n0 = ((50 - anchorA.y) / 100) * heightM;
+  const eastRot = e0 * cosT - n0 * sinT;
+  const northRot = e0 * sinT + n0 * cosT;
+
+  return {
+    baseLat: anchorA.lat - northRot / mPerDegLat,
+    baseLng: anchorA.lng - eastRot / mPerDegLng,
+    widthM,
+    heightM,
+    rotationDeg: (theta * 180) / Math.PI,
   };
 }
 
@@ -115,6 +182,24 @@ function createSeedState() {
   const locMain = 'loc-ruliba-main';
   const orgTumba = 'org-rp-tumba';
   const locTumba = 'loc-rp-tumba-main';
+
+  // Two GPS pins surveyed on site and forwarded by the Ruliba team: the Admin
+  // block and the Technical / Industry block. We don't have a coordinate for
+  // every office, so these two control points are used to georeference the
+  // whole schematic (see solveRotatedOrigin) and the remaining offices are
+  // placed by the layout that radiates off the entrance→reception→blocks spine.
+  //   Admin block      -> block-a-corridor node (x:22, y:55)
+  //   Technical block  -> industry-area node    (x:64, y:55)
+  // A third reading (-1.949086, 30.230263) was not used as a control point, but
+  // under this transform it falls on the Block B maintenance offices (~x:53,
+  // y:30), which matches its position on the ground — a good sanity check.
+  const rulibaAdminPin = { lat: -1.949983, lng: 30.229861 };
+  const rulibaTechnicalPin = { lat: -1.949358, lng: 30.230784 };
+  const rulibaOrigin = solveRotatedOrigin(
+    { x: 22, y: 55, ...rulibaAdminPin },
+    { x: 64, y: 55, ...rulibaTechnicalPin },
+    140 / 110, // keep the schematic's authored width:height aspect
+  );
 
   const tumbaOrigin = {
     // Centred on the RP Tumba College campus footprint. The full bounding
@@ -413,9 +498,10 @@ function createSeedState() {
     // Single Ruliba Clays campus combining all the offices documented in the
     // operational survey (see ai/README.md): Block A (administrative), Block
     // B (operations & support), Industry Area, Stock / Warehouse Area, plus
-    // shared facilities (Restaurant, Toilets). Coordinates are anchored on
-    // the real Ruliba Clays GPS (Kigali–Huye road, near the Nyabarongo
-    // river) and the layout uses a 140 m × 110 m site footprint.
+    // shared facilities (Restaurant, Toilets). The schematic is georeferenced
+    // onto the real site from the two surveyed GPS pins (rulibaOrigin), so the
+    // Admin and Technical blocks sit on their exact coordinates and the rest of
+    // the offices are positioned by the same rotation/scale transform.
     maps: {
       [locMain]: attachGeo({
         floorplanImage: null,
@@ -482,15 +568,7 @@ function createSeedState() {
           { id: 'edge-shared-restaurant', from: 'block-b-corridor', to: 'restaurant', distanceM: 32, direction: 'left', directionHint: 'Cross the courtyard to the Restaurant.', isAccessible: true },
           { id: 'edge-shared-toilets', from: 'block-b-corridor', to: 'toilets', distanceM: 32, direction: 'right', directionHint: 'Turn right and follow the corridor to the Toilets.', isAccessible: true },
         ],
-      }, {
-        // Real Ruliba Clays Ltd GPS anchor (Kigali–Huye road, near the
-        // Nyabarongo river). Centred on the site so the rectangular
-        // footprint maps onto the actual factory plot.
-        baseLat: -1.96115,
-        baseLng: 30.00427,
-        widthM: 140,
-        heightM: 110,
-      }),
+      }, rulibaOrigin),
       // RP Tumba College main campus. Nodes are authored with real GPS
       // coordinates from the campus survey and converted to the site
       // footprint via geoNode so attachGeo's round-trip preserves them.
