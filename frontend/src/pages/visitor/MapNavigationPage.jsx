@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2 } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -122,6 +122,42 @@ function getNodeLatLng(node) {
   return null;
 }
 
+// Softens the route polyline by rounding each turn with a short quadratic
+// curve, so the line reads as a guided path rather than rigid straight chords
+// between node centres. This is purely cosmetic — it does NOT add real path
+// data. Segments that are already straight (collinear nodes, e.g. the corridor
+// spine) stay straight because the curve's control points are collinear too.
+// When an edge gains a real surveyed gpsTrail (>2 points), that geometry is
+// used as-is by buildRoutePositions and this just rounds whatever it gets.
+function roundRouteCorners(points, radiusFrac = 0.3, samples = 8) {
+  if (!Array.isArray(points) || points.length < 3) return points || [];
+  const out = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const a = points[i - 1];
+    const v = points[i];
+    const b = points[i + 1];
+    const dAV = Math.hypot(v[0] - a[0], v[1] - a[1]);
+    const dVB = Math.hypot(b[0] - v[0], b[1] - v[1]);
+    if (dAV === 0 || dVB === 0) { out.push(v); continue; }
+    const fA = (Math.min(radiusFrac, 0.5) * dAV) / dAV;
+    const fB = (Math.min(radiusFrac, 0.5) * dVB) / dVB;
+    const start = [v[0] + (a[0] - v[0]) * fA, v[1] + (a[1] - v[1]) * fA];
+    const end = [v[0] + (b[0] - v[0]) * fB, v[1] + (b[1] - v[1]) * fB];
+    out.push(start);
+    for (let s = 1; s < samples; s++) {
+      const t = s / samples;
+      const mt = 1 - t;
+      out.push([
+        mt * mt * start[0] + 2 * mt * t * v[0] + t * t * end[0],
+        mt * mt * start[1] + 2 * mt * t * v[1] + t * t * end[1],
+      ]);
+    }
+    out.push(end);
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}
+
 export default function MapNavigationPage() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
@@ -135,12 +171,15 @@ export default function MapNavigationPage() {
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeRail, setActiveRail] = useState('map');
   const [arrivalToast, setArrivalToast] = useState(null);
+  const [approachRoute, setApproachRoute] = useState(null); // real-road [[lat,lng],…] to the gate
+  const [approachInfo, setApproachInfo] = useState(null); // { distanceM, durationMin }
   const watchIdRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
   const arrivalAnnouncedRef = useRef(null);
   const mapRef = useRef(null);
   const routeListRef = useRef(null);
+  const lastRouteOriginRef = useRef(null);
 
   useEffect(() => {
     const visitorIdFromRoute = routerLocation.state?.visitorId;
@@ -177,6 +216,62 @@ export default function MapNavigationPage() {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
     };
   }, [locationRetryToken]);
+
+  // Approach leg, drawn IN-APP (no external Google jump). While the visitor is
+  // still far from the gate, our node graph has no road geometry to get there,
+  // so we ask a free routing service (public OSRM) for the real-road driving
+  // route from the live GPS to the site entrance and render it on our own map.
+  // Re-routes only when the origin drifts >50 m, so GPS ticks don't spam it.
+  useEffect(() => {
+    if (!currentVisitor?.id || !isValidLatLng(livePosition)) {
+      setApproachRoute(null);
+      setApproachInfo(null);
+      lastRouteOriginRef.current = null;
+      return undefined;
+    }
+    const mapObj = getLocationMap(state, currentVisitor.locationId);
+    const entranceNode = getNode(mapObj, 'entrance');
+    let entry = entranceNode ? getNodeLatLng(entranceNode) : null;
+    if (!isValidLatLng(entry)) {
+      const destNode = getNode(mapObj, currentVisitor.destinationNodeId);
+      entry = destNode ? getNodeLatLng(destNode) : null;
+    }
+    if (!isValidLatLng(entry) || distanceMeters(livePosition, entry) <= 350) {
+      setApproachRoute(null);
+      setApproachInfo(null);
+      lastRouteOriginRef.current = null;
+      return undefined;
+    }
+    const last = lastRouteOriginRef.current;
+    if (last && distanceMeters(last, livePosition) < 50 && approachRoute) {
+      return undefined; // already routed from near here
+    }
+    lastRouteOriginRef.current = livePosition;
+    const controller = new AbortController();
+    const [oLat, oLng] = livePosition;
+    const [dLat, dLng] = entry;
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`,
+      { signal: controller.signal },
+    )
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((data) => {
+        const route = data?.routes?.[0];
+        const coords = (route?.geometry?.coordinates || [])
+          .map(([lng, lat]) => [lat, lng])
+          .filter(isValidLatLng);
+        if (coords.length > 1) {
+          setApproachRoute(coords);
+          setApproachInfo({
+            distanceM: route.distance,
+            durationMin: Math.max(1, Math.round(route.duration / 60)),
+          });
+        }
+      })
+      .catch(() => { lastRouteOriginRef.current = null; }); // allow a retry next tick
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVisitor?.id, currentVisitor?.locationId, currentVisitor?.destinationNodeId, livePosition, state]);
 
   // Snap the live position to the next route node and advance the backend's
   // currentNodeId when within 8 m — that keeps the step list in sync as the
@@ -369,7 +464,9 @@ export default function MapNavigationPage() {
   // journey rather than the static building footprint.
   const allPositions = [
     ...(isValidLatLng(livePosition) ? [livePosition] : []),
-    ...liveRoutePolyline,
+    // While far, approachRoute (the real-road line to the gate) is set; once
+    // on-site it's cleared and we fit the internal route instead.
+    ...(approachRoute && approachRoute.length > 1 ? approachRoute : liveRoutePolyline),
     ...(isValidLatLng(destinationNodePos) ? [destinationNodePos] : []),
   ].filter(isValidLatLng);
 
@@ -399,6 +496,45 @@ export default function MapNavigationPage() {
       [maxLat + padLat, maxLng + padLng],
     ];
   })();
+
+  // Approach vs. on-site. Our internal node graph only describes movement
+  // *inside* the site; it has no road geometry for getting there. So while the
+  // visitor is still far from the gate we hand the approach leg to Google Maps
+  // (real roads + turn-by-turn), and only switch to the on-site guided route
+  // once they're within FAR_FROM_SITE_M of the entrance.
+  const FAR_FROM_SITE_M = 350;
+  const siteEntryPos = (() => {
+    const entranceNode = getNode(map, 'entrance');
+    const fromEntrance = entranceNode ? getNodeLatLng(entranceNode) : null;
+    if (isValidLatLng(fromEntrance)) return fromEntrance;
+    if (isValidLatLng(destinationNodePos)) return destinationNodePos;
+    if (buildingBounds) {
+      return [
+        (buildingBounds[0][0] + buildingBounds[1][0]) / 2,
+        (buildingBounds[0][1] + buildingBounds[1][1]) / 2,
+      ];
+    }
+    return null;
+  })();
+  const distanceToSiteM = isValidLatLng(livePosition) && isValidLatLng(siteEntryPos)
+    ? distanceMeters(livePosition, siteEntryPos)
+    : null;
+  const isFarFromSite = distanceToSiteM != null && distanceToSiteM > FAR_FROM_SITE_M;
+  const fmtMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
+  const farDistanceLabel = distanceToSiteM == null ? '' : fmtMeters(distanceToSiteM);
+  // Prefer the actual road distance from the router; fall back to straight-line.
+  const approachDistanceLabel = approachInfo?.distanceM != null
+    ? fmtMeters(approachInfo.distanceM)
+    : farDistanceLabel;
+  // Deep link into Google Maps directions, starting turn-by-turn navigation
+  // (dir_action=navigate). Destination is the gate so the on-site route can
+  // take over on arrival. Origin is the live GPS when we have it; otherwise
+  // Google falls back to the device's own location.
+  const googleMapsNavUrl = isValidLatLng(siteEntryPos)
+    ? `https://www.google.com/maps/dir/?api=1${
+        isValidLatLng(livePosition) ? `&origin=${livePosition[0]},${livePosition[1]}` : ''
+      }&destination=${siteEntryPos[0]},${siteEntryPos[1]}&travelmode=driving&dir_action=navigate`
+    : null;
 
   // Build live steps from route data
   const currentIndex = (currentVisitor.routeNodeIds || []).indexOf(currentVisitor.currentNodeId);
@@ -608,23 +744,32 @@ export default function MapNavigationPage() {
           />
 
           {/* Completed segments — faded, so the visitor can see where they've been */}
-          {fullRoutePositions.length > 1 && (
+          {/* Approach route to the gate (real roads, fetched from OSRM) —
+              drawn on our own map so the visitor never leaves the app. */}
+          {isFarFromSite && approachRoute && approachRoute.length > 1 && (
             <Polyline
-              positions={fullRoutePositions}
+              positions={approachRoute}
+              pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
+            />
+          )}
+
+          {!isFarFromSite && fullRoutePositions.length > 1 && (
+            <Polyline
+              positions={roundRouteCorners(fullRoutePositions)}
               pathOptions={{ color: '#cd5c5c', weight: 4, opacity: 0.25, lineCap: 'round', lineJoin: 'round', dashArray: '6 8' }}
             />
           )}
 
           {/* Live route — origin is the visitor's current GPS, ending at the destination */}
-          {liveRoutePolyline.length > 1 && (
+          {!isFarFromSite && liveRoutePolyline.length > 1 && (
             <Polyline
-              positions={liveRoutePolyline}
+              positions={roundRouteCorners(liveRoutePolyline)}
               pathOptions={{ color: '#cd5c5c', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
             />
           )}
 
-          {/* Route node markers (intermediate waypoints) */}
-          {(currentVisitor.routeNodeIds || []).map((nodeId) => {
+          {/* Route node markers (intermediate waypoints) — only on-site */}
+          {!isFarFromSite && (currentVisitor.routeNodeIds || []).map((nodeId) => {
             const node = getNode(map, nodeId);
             if (!node || nodeId === currentVisitor.currentNodeId || nodeId === currentVisitor.destinationNodeId) return null;
             const pos = getNodeLatLng(node);
@@ -659,6 +804,41 @@ export default function MapNavigationPage() {
             </Marker>
           )}
         </MapContainer>
+
+        {/* Far-from-site banner — the real-road approach route is drawn on the
+            map above (in-app, no external jump). This shows the live status /
+            ETA, with an optional Google Maps link as a fallback only. Once the
+            visitor reaches the gate the on-site guided route takes over. */}
+        {isFarFromSite && (
+          <div className="absolute top-4 left-4 right-16 z-[670] flex justify-center">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-xl max-w-md w-full">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                {approachRoute ? <Navigation size={20} strokeWidth={2.2} /> : <Loader2 size={20} className="animate-spin" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                  {t('visitor.nav.farFromSite.title', { distance: approachDistanceLabel })}
+                </p>
+                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-snug">
+                  {approachInfo
+                    ? t('visitor.nav.farFromSite.eta', { minutes: approachInfo.durationMin })
+                    : t('visitor.nav.farFromSite.subtitle')}
+                </p>
+              </div>
+              {googleMapsNavUrl && (
+                <a
+                  href={googleMapsNavUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={t('visitor.nav.farFromSite.cta')}
+                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
+                >
+                  {t('visitor.nav.farFromSite.cta')}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* GPS required overlay — blocks the map until the visitor's real
             position is available, since the origin must always be where they
