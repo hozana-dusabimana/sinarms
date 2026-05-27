@@ -2,6 +2,22 @@
 
 A step-by-step guide to install and start every part of the project on a fresh machine.
 
+## 0. Fastest start (Windows, no Docker)
+
+If you're on Windows and don't want to use Docker, run the bundled script from
+the project root — it installs anything missing (Node, Python, npm/pip deps),
+starts MySQL (the bundled XAMPP one if needed), and launches all three services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run.ps1
+```
+
+Or just double-click `run.bat`. Then open <http://localhost:5173>.
+
+Flags: `-Reinstall` (rebuild node_modules / venv) · `-NoInstall` (skip installs,
+just start). The manual steps below are the alternative if you prefer to run
+each part yourself.
+
 ## 1. Prerequisites
 
 Install these first (any recent version is fine):
