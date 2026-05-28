@@ -155,6 +155,7 @@ function mergeMissingSeedEntities(state) {
 
   nextState.organizations = nextState.organizations || [];
   nextState.locations = nextState.locations || [];
+  nextState.users = nextState.users || [];
   nextState.maps = nextState.maps || {};
 
   const orgIds = new Set(nextState.organizations.map((organization) => organization.id));
@@ -164,6 +165,17 @@ function mergeMissingSeedEntities(state) {
       orgIds.add(organization.id);
       changed = true;
     }
+  });
+
+  const userIds = new Set(nextState.users.map((user) => user.id));
+  const userEmails = new Set(nextState.users.map((user) => String(user.email || '').toLowerCase()));
+  seedState.users.forEach((user) => {
+    const email = String(user.email || '').toLowerCase();
+    if (userIds.has(user.id) || (email && userEmails.has(email))) return;
+    nextState.users.push(clone(user));
+    userIds.add(user.id);
+    if (email) userEmails.add(email);
+    changed = true;
   });
 
   const locationIds = new Set(nextState.locations.map((location) => location.id));
