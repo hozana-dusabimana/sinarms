@@ -182,6 +182,8 @@ function createSeedState() {
   const locMain = 'loc-ruliba-main';
   const orgTumba = 'org-rp-tumba';
   const locTumba = 'loc-rp-tumba-main';
+  const orgQonics = 'org-qonics';
+  const locQonics = 'loc-qonics-main';
 
   // Two GPS pins surveyed on site and forwarded by the Ruliba team: the Admin
   // block and the Technical / Industry block. We don't have a coordinate for
@@ -287,6 +289,63 @@ function createSeedState() {
     })),
   ];
 
+  // Qonics Inc small office, georeferenced from four GPS samples taken on site.
+  // Site axis runs roughly north-south: entrance at the south end, Reception
+  // sits in front of (south of) the Manager Office at the north end, so
+  // visitors hit Reception before reaching the Manager.
+  const qonicsOrigin = {
+    baseLat: -1.929827,
+    baseLng: 30.070386,
+    widthM: 80,
+    heightM: 80,
+  };
+
+  const qonicsEntrance = { lat: -1.930023, lng: 30.070365 };
+  const qonicsReception = { lat: -1.929710, lng: 30.070367 };
+
+  const qonicsOffices = [
+    { id: 'manager-office', label: 'Manager Office', aliases: ['manager', 'manager office', 'general manager', 'gm office'], lat: -1.929630, lng: 30.070359 },
+    { id: 'meeting-room', label: 'Meeting Room', aliases: ['meeting room', 'boardroom', 'conference room'], lat: -1.930011, lng: 30.070413 },
+    // No GPS sample provided for the kitchen — placed within the building
+    // footprint, east of the reception/manager line as a back-of-house room.
+    { id: 'kitchen', label: 'Kitchen', aliases: ['kitchen', 'pantry', 'tea room', 'igikoni'], lat: -1.929670, lng: 30.070410 },
+  ];
+
+  const qonicsNodes = [
+    geoNode(
+      { id: 'entrance', label: 'Main Entrance', aliases: ['entrance', 'main gate', 'gate', 'irembo', 'site entrance'], type: 'checkpoint', zone: 'public', ...qonicsEntrance },
+      qonicsOrigin,
+    ),
+    geoNode(
+      { id: 'reception', label: 'Reception', aliases: ['reception', 'reception desk', 'front desk', 'accueil', 'akira abashyitsi'], type: 'office', zone: 'public', ...qonicsReception },
+      qonicsOrigin,
+    ),
+    ...qonicsOffices.map((office) =>
+      geoNode({ ...office, type: 'office', zone: 'public' }, qonicsOrigin),
+    ),
+  ];
+
+  const qonicsEdges = [
+    {
+      id: 'edge-qonics-entrance-reception',
+      from: 'entrance',
+      to: 'reception',
+      distanceM: geoDistanceM(qonicsEntrance, qonicsReception),
+      direction: 'straight',
+      directionHint: 'Walk straight from the main entrance to the Reception desk.',
+      isAccessible: true,
+    },
+    ...qonicsOffices.map((office) => ({
+      id: `edge-qonics-rec-${office.id}`,
+      from: 'reception',
+      to: office.id,
+      distanceM: geoDistanceM(qonicsReception, office),
+      direction: 'straight',
+      directionHint: `Walk from Reception to the ${office.label}.`,
+      isAccessible: true,
+    })),
+  ];
+
   return {
     organizations: [
       {
@@ -315,6 +374,18 @@ function createSeedState() {
         createdAt: hoursAgo(1000),
         createdBy: 'user-admin-1',
       },
+      {
+        id: orgQonics,
+        name: 'Qonics Inc',
+        description: 'Software engineering firm in Kigali building digital products. Compact head office: Reception desk sits in front of the Manager Office.',
+        contactEmail: 'hello@qonics.com',
+        contactPhone: '+250 788 000 020',
+        address: 'Kigali, Rwanda',
+        logoUrl: null,
+        status: 'active',
+        createdAt: hoursAgo(800),
+        createdBy: 'user-admin-1',
+      },
     ],
     locations: [
       {
@@ -340,6 +411,18 @@ function createSeedState() {
         qrCodeToken: 'SINARMS-TUMBA-MAIN',
         receptionistIds: ['user-rec-2'],
         createdAt: hoursAgo(980),
+      },
+      {
+        id: locQonics,
+        organizationId: orgQonics,
+        name: 'Qonics Inc - Head Office',
+        address: 'Kigali, Rwanda',
+        floorCount: 1,
+        description: 'Qonics Inc head office: main entrance, Reception desk sitting in front of the Manager Office, plus a meeting room off the entrance.',
+        status: 'active',
+        qrCodeToken: 'SINARMS-QONICS-MAIN',
+        receptionistIds: ['user-rec-3'],
+        createdAt: hoursAgo(780),
       },
     ],
     users: [
@@ -380,6 +463,19 @@ function createSeedState() {
         permissions: receptionistPermissions,
         status: 'active',
         lastLogin: minutesAgo(60),
+        createdBy: 'user-admin-1',
+      },
+      {
+        id: 'user-rec-3',
+        name: 'Aline Iradukunda',
+        email: 'reception@qonics.com',
+        passwordHash: bcrypt.hashSync('Reception123!', 10),
+        role: 'receptionist',
+        organizationId: orgQonics,
+        locationId: locQonics,
+        permissions: receptionistPermissions,
+        status: 'active',
+        lastLogin: minutesAgo(45),
         createdBy: 'user-admin-1',
       },
     ],
@@ -517,6 +613,17 @@ function createSeedState() {
         ipAddress: '10.0.0.45',
         timestamp: hoursAgo(48),
       },
+      {
+        id: 'audit-3',
+        userId: 'user-admin-1',
+        actorName: 'Alice Mutoni',
+        actionType: 'CREATE_USER',
+        targetType: 'user',
+        targetId: 'user-rec-3',
+        details: 'Created receptionist account Aline Iradukunda for Qonics Inc head office reception.',
+        ipAddress: '10.0.0.45',
+        timestamp: hoursAgo(40),
+      },
     ],
     notifications: [],
     // Single Ruliba Clays campus combining all the offices documented in the
@@ -599,6 +706,10 @@ function createSeedState() {
       [locTumba]: attachGeo(
         { floorplanImage: null, nodes: tumbaNodes, edges: tumbaEdges },
         tumbaOrigin,
+      ),
+      [locQonics]: attachGeo(
+        { floorplanImage: null, nodes: qonicsNodes, edges: qonicsEdges },
+        qonicsOrigin,
       ),
     },
   };

@@ -65,6 +65,7 @@ Seeded by `backend/src/data/seed.js` (run `npm run migrate` to apply).
 | System Admin          | `admin@sinarms.rw`               | `Admin123!`     |
 | Receptionist (Ruliba) | `reception@ruliba.rw`            | `Reception123!` |
 | Receptionist (Tumba)  | `reception@tumbacollege.ac.rw`   | `Reception123!` |
+| Receptionist (Qonics) | `reception@qonics.com`           | `Reception123!` |
 
 Visitors check in from the landing page — no login required.
 
