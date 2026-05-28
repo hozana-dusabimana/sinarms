@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -6,7 +6,7 @@ import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getLocationById, getNode } from '../../lib/sinarmsEngine';
-import { CHECKOUT_RADIUS_M, CHECKOUT_DEBOUNCE_MS } from '../../lib/geo';
+import { CHECKOUT_RADIUS_M, CHECKOUT_DEBOUNCE_MS, clipPolylineFromPosition, nearestPointOnPolyline } from '../../lib/geo';
 
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Rectangle, ImageOverlay, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -221,7 +221,7 @@ export default function MapNavigationPage() {
         else if (err?.code === 3) setLocationError('timeout');
         else setLocationError('unavailable');
       },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
     );
     watchIdRef.current = wId;
     return () => {
@@ -233,7 +233,9 @@ export default function MapNavigationPage() {
   // still far from the gate, our node graph has no road geometry to get there,
   // so we ask a free routing service (public OSRM) for the real-road driving
   // route from the live GPS to the site entrance and render it on our own map.
-  // Re-routes only when the origin drifts >50 m, so GPS ticks don't spam it.
+  // We only call OSRM when there is no route yet OR the visitor has drifted
+  // off the existing line — between calls, the rendered polyline is clipped
+  // to the live position so it visibly shortens with every GPS tick.
   useEffect(() => {
     if (!currentVisitor?.id || !isValidLatLng(livePosition)) {
       setApproachRoute(null);
@@ -254,9 +256,11 @@ export default function MapNavigationPage() {
       lastRouteOriginRef.current = null;
       return undefined;
     }
-    const last = lastRouteOriginRef.current;
-    if (last && distanceMeters(last, livePosition) < 50 && approachRoute) {
-      return undefined; // already routed from near here
+    if (approachRoute && approachRoute.length > 1) {
+      const near = nearestPointOnPolyline(approachRoute, livePosition);
+      if (near && near.distance <= 30) {
+        return undefined; // still on the existing line, clipping handles the visual update
+      }
     }
     lastRouteOriginRef.current = livePosition;
     const controller = new AbortController();
@@ -286,9 +290,9 @@ export default function MapNavigationPage() {
   }, [currentVisitor?.id, currentVisitor?.locationId, currentVisitor?.destinationNodeId, livePosition, state]);
 
   // Snap the live position to the next route node and advance the backend's
-  // currentNodeId when within 8 m — that keeps the step list in sync as the
-  // visitor physically walks the route.
-  const SNAP_RADIUS_M = 8;
+  // currentNodeId when within 15 m — that matches typical phone GPS accuracy
+  // so the step list actually advances as the visitor walks the route.
+  const SNAP_RADIUS_M = 15;
   useEffect(() => {
     if (!currentVisitor?.id) return;
     const probe = livePosition;
@@ -528,14 +532,26 @@ export default function MapNavigationPage() {
     return segments;
   })();
 
+  // Clip the OSRM line to the visitor's live position so the drawn polyline
+  // shortens with every GPS tick — without re-asking OSRM. Falls back to the
+  // raw line if the visitor is off-route (the route effect above will then
+  // refetch from the new origin).
+  const displayedApproachRoute = useMemo(() => {
+    if (!approachRoute || approachRoute.length < 2) return null;
+    if (!isValidLatLng(livePosition)) return approachRoute;
+    const clipped = clipPolylineFromPosition(approachRoute, livePosition, 30);
+    return clipped && clipped.length > 1 ? clipped : approachRoute;
+  }, [approachRoute, livePosition]);
+
   // Fit bounds covers the visitor's live position, the upcoming route, and
   // the destination — so as the visitor moves, the view tracks the remaining
   // journey rather than the static building footprint.
   const allPositions = [
     ...(isValidLatLng(livePosition) ? [livePosition] : []),
-    // While far, approachRoute (the real-road line to the gate) is set; once
-    // on-site it's cleared and we fit the internal route instead.
-    ...(approachRoute && approachRoute.length > 1 ? approachRoute : liveRoutePolyline),
+    // While far, displayedApproachRoute (the real-road line to the gate,
+    // clipped to the live position) is set; once on-site it's cleared and we
+    // fit the internal route instead.
+    ...(displayedApproachRoute && displayedApproachRoute.length > 1 ? displayedApproachRoute : liveRoutePolyline),
     ...(isValidLatLng(destinationNodePos) ? [destinationNodePos] : []),
   ].filter(isValidLatLng);
 
@@ -815,9 +831,9 @@ export default function MapNavigationPage() {
           {/* Completed segments — faded, so the visitor can see where they've been */}
           {/* Approach route to the gate (real roads, fetched from OSRM) —
               drawn on our own map so the visitor never leaves the app. */}
-          {isFarFromSite && approachRoute && approachRoute.length > 1 && (
+          {isFarFromSite && displayedApproachRoute && displayedApproachRoute.length > 1 && (
             <Polyline
-              positions={approachRoute}
+              positions={displayedApproachRoute}
               pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
             />
           )}
