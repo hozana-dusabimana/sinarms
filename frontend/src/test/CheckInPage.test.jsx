@@ -71,8 +71,21 @@ function disableGeolocation() {
   });
 }
 
-function clickNext() {
+async function clickNextWhenEnabled() {
+  await waitFor(() => {
+    expect(screen.getByRole('button', { name: /visitor\.checkin\.next/i })).not.toBeDisabled();
+  });
   fireEvent.click(screen.getByRole('button', { name: /visitor\.checkin\.next/i }));
+}
+
+// The redesigned page renders some translation keys (e.g. the step title)
+// twice — once as the page header and once as the field label. Find the
+// `<label>` element specifically.
+function findLabelInputByKey(key) {
+  const labels = Array.from(document.querySelectorAll('label'));
+  const label = labels.find((el) => el.textContent.trim() === key);
+  if (!label) throw new Error(`No <label> with text ${key}`);
+  return label.parentElement.querySelector('input');
 }
 
 describe('CheckInPage', () => {
@@ -103,24 +116,21 @@ describe('CheckInPage', () => {
 
     // Step 1: location select is visible and pre-populated.
     expect(screen.getByText('Ruliba Clays Ltd | Head Office - Kigali')).toBeInTheDocument();
-    clickNext();
+    await clickNextWhenEnabled();
 
-    // Step 2: fill name + id. findByText awaits the step transition.
-    await screen.findByText('visitor.checkin.fullName');
-    fireEvent.input(
-      screen.getByText('visitor.checkin.fullName').parentElement.querySelector('input'),
-      { target: { value: 'John Doe' } },
-    );
-    fireEvent.input(
-      screen.getByText('visitor.checkin.idOrPhone').parentElement.querySelector('input'),
-      { target: { value: '0788000000' } },
-    );
-
-    // Wait until the Next button reflects valid form state.
+    // Step 2: fill name + id. waitFor awaits the step transition (the label
+    // appears once we reach step 1).
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /visitor\.checkin\.next/i })).not.toBeDisabled();
+      expect(
+        Array.from(document.querySelectorAll('label')).some(
+          (el) => el.textContent.trim() === 'visitor.checkin.fullName',
+        ),
+      ).toBe(true);
     });
-    clickNext();
+    fireEvent.input(findLabelInputByKey('visitor.checkin.fullName'), { target: { value: 'John Doe' } });
+    fireEvent.input(findLabelInputByKey('visitor.checkin.idOrPhone'), { target: { value: '0788000000' } });
+
+    await clickNextWhenEnabled();
 
     // Step 3: destination select.
     const destinationSelect = await screen.findByRole('combobox');
@@ -151,20 +161,17 @@ describe('CheckInPage', () => {
   it('shows a textarea when destination is set to Other (type it)', async () => {
     render(<CheckInPage />);
 
-    clickNext();
-    await screen.findByText('visitor.checkin.fullName');
-    fireEvent.input(
-      screen.getByText('visitor.checkin.fullName').parentElement.querySelector('input'),
-      { target: { value: 'John Doe' } },
-    );
-    fireEvent.input(
-      screen.getByText('visitor.checkin.idOrPhone').parentElement.querySelector('input'),
-      { target: { value: '0788000000' } },
-    );
+    await clickNextWhenEnabled();
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /visitor\.checkin\.next/i })).not.toBeDisabled();
+      expect(
+        Array.from(document.querySelectorAll('label')).some(
+          (el) => el.textContent.trim() === 'visitor.checkin.fullName',
+        ),
+      ).toBe(true);
     });
-    clickNext();
+    fireEvent.input(findLabelInputByKey('visitor.checkin.fullName'), { target: { value: 'John Doe' } });
+    fireEvent.input(findLabelInputByKey('visitor.checkin.idOrPhone'), { target: { value: '0788000000' } });
+    await clickNextWhenEnabled();
 
     const destinationSelect = await screen.findByRole('combobox');
     fireEvent.change(destinationSelect, { target: { value: 'other' } });

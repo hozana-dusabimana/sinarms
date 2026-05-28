@@ -1,7 +1,21 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, User, Hash, ArrowRight, ArrowLeft, Loader, QrCode, Check, Navigation, AlertTriangle } from 'lucide-react';
+import {
+  MapPin,
+  User,
+  Hash,
+  ArrowRight,
+  ArrowLeft,
+  Loader,
+  QrCode,
+  Check,
+  Navigation,
+  AlertTriangle,
+  Building2,
+  Compass,
+  Sparkles,
+} from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { CHECKIN_RADIUS_M, distanceMeters, isValidLatLng } from '../../lib/geo';
@@ -54,8 +68,8 @@ function detectNameError(rawValue, t) {
 
 export default function CheckInPage() {
   const navigate = useNavigate();
-  const { state, classifyVisitorDestination, registerVisitor, qrCheckin, isReady } = useSinarms();
-  const { language, languages, setLanguage, t } = useLanguage();
+  const { state, classifyVisitorDestination, registerVisitor, qrCheckin, isReady, currentVisitor } = useSinarms();
+  const { language, t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
   const [touched, setTouched] = useState({ name: false, idOrPhone: false });
@@ -297,320 +311,496 @@ export default function CheckInPage() {
     );
   }
 
-  return (
-    <div className="flex flex-col items-center w-full min-h-[80vh] pt-4">
-      {/* Language Toggle */}
-      <div className="flex bg-slate-200/50 dark:bg-slate-800/50 p-1 rounded-full mb-10 backdrop-blur-md shadow-inner border border-white/40 dark:border-slate-700/50">
-        {languages.map((code) => (
-          <button
-            key={code}
-            onClick={() => setLanguage(code)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${
-              language === code ? 'bg-white dark:bg-slate-700 shadow-md text-[var(--color-brand-terracotta)] dark:text-red-400' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-          >
-            {code.toUpperCase()}
-          </button>
-        ))}
-      </div>
+  const stepTitleKeys = ['visitor.checkin.location', 'visitor.checkin.fullName', 'visitor.checkin.dest'];
+  const stepHelpKeys = [
+    'visitor.checkin.step.location.help',
+    'visitor.checkin.step.identity.help',
+    'visitor.checkin.step.destination.help',
+  ];
+  const stepHelp = t(stepHelpKeys[step]);
+  const stepTitle = t(stepTitleKeys[step]);
 
+  const orgName = selectedOrganization?.name || 'SINARMS';
+  const locationName = selectedLocation?.name || '';
+
+  return (
+    <div className="flex w-full justify-center">
       {qrStatus?.kind === 'error' && (
-        <div className="w-full max-w-md mx-auto mb-4 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm font-semibold text-red-700 dark:text-red-300">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 w-full max-w-md px-4 py-3 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-sm font-semibold text-red-700 dark:text-red-300 shadow-lg">
           {t('visitor.checkin.qrFailed')}
         </div>
       )}
 
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-md mx-auto glass-card p-6 sm:p-8"
+        initial={{ opacity: 0, y: 16, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-full max-w-[1024px] grid grid-cols-1 lg:grid-cols-[44%_56%] rounded-3xl overflow-hidden shadow-2xl shadow-slate-900/10 dark:shadow-black/40 ring-1 ring-slate-200/70 dark:ring-slate-800/70 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl"
       >
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-500 rounded-2xl shadow-lg shadow-red-500/20 flex items-center justify-center mb-4 transform -rotate-3 hover:rotate-0 transition-transform">
-            <MapPin size={32} className="text-white" />
+        {/* ============ LEFT PANEL ============ */}
+        <div className="relative hidden lg:flex flex-col justify-between p-9 xl:p-11 text-white bg-gradient-to-br from-[#160b0b] via-[#1d0f10] to-[#2b1414] overflow-hidden min-h-[640px]">
+          {/* Dotted grid */}
+          <div
+            className="absolute inset-0 opacity-30 pointer-events-none"
+            style={{
+              backgroundImage:
+                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='28' height='28'><circle cx='1' cy='1' r='1' fill='rgba(255,255,255,0.18)'/></svg>\")",
+            }}
+          />
+          {/* Radial glows */}
+          <div className="absolute -top-24 -left-24 w-96 h-96 bg-[var(--color-brand-terracotta)]/40 rounded-full blur-[100px] pointer-events-none" />
+          <div className="absolute -bottom-32 -right-16 w-96 h-96 bg-red-700/30 rounded-full blur-[120px] pointer-events-none" />
+
+          {/* Top: eyebrow + welcome */}
+          <div className="relative z-10">
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-[10px] font-bold uppercase tracking-[0.2em] text-white/85">
+              <Sparkles size={11} className="text-[var(--color-brand-light-clay)]" />
+              {t('visitor.checkin.eyebrow')}
+            </span>
+            <h1 className="mt-5 text-3xl xl:text-[2.1rem] font-black leading-[1.1] tracking-tight">
+              {t('visitor.checkin.side.headline')}
+            </h1>
+            <p className="mt-3 text-sm text-white/65 leading-relaxed max-w-md">
+              {t('visitor.checkin.side.subhead')}
+            </p>
           </div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-slate-800 dark:text-slate-100">
-            {t('visitor.checkin.title', { org: selectedOrganization?.name || 'SINARMS' })}
-          </h2>
-          <p className="text-sm tracking-wide text-slate-500 dark:text-slate-400 mt-2">{t('visitor.checkin.subtitle')}</p>
+
+          {/* Middle: vertical step indicator */}
+          <ul className="relative z-10 space-y-4">
+            {steps.map((label, i) => {
+              const isDone = i < step;
+              const isActive = i === step;
+              return (
+                <motion.li
+                  key={label}
+                  initial={{ opacity: 0, x: -8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.2 + i * 0.06, duration: 0.35 }}
+                  className="flex items-center gap-4"
+                >
+                  <span
+                    className={`relative w-10 h-10 rounded-full flex items-center justify-center text-sm font-black flex-shrink-0 transition-colors ${
+                      isDone
+                        ? 'bg-[var(--color-brand-terracotta)] text-white shadow-lg shadow-red-900/50'
+                        : isActive
+                          ? 'bg-[var(--color-brand-terracotta)] text-white shadow-lg shadow-red-900/50 ring-4 ring-[var(--color-brand-terracotta)]/30'
+                          : 'bg-white/10 text-white/60 border border-white/15'
+                    }`}
+                  >
+                    {isDone ? <Check size={16} strokeWidth={3} /> : i + 1}
+                  </span>
+                  <div className="leading-tight">
+                    <p
+                      className={`text-sm font-bold ${
+                        isActive || isDone ? 'text-white' : 'text-white/55'
+                      }`}
+                    >
+                      {label}
+                    </p>
+                    <p
+                      className={`text-[11px] font-medium ${
+                        isActive || isDone ? 'text-white/60' : 'text-white/35'
+                      }`}
+                    >
+                      {t(stepHelpKeys[i])}
+                    </p>
+                  </div>
+                </motion.li>
+              );
+            })}
+          </ul>
+
+          {/* Bottom: welcome chip + already-in link */}
+          <div className="relative z-10 space-y-3">
+            {selectedOrganization && (
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-white/5 border border-white/10">
+                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 flex items-center justify-center flex-shrink-0">
+                  <Building2 size={15} className="text-white" />
+                </span>
+                <div className="leading-tight min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/50">
+                    {t('visitor.checkin.location')}
+                  </p>
+                  <p className="text-sm font-bold text-white truncate">
+                    {orgName}
+                    {locationName ? ` · ${locationName}` : ''}
+                  </p>
+                </div>
+              </div>
+            )}
+            {currentVisitor?.id && (
+              <button
+                type="button"
+                onClick={() => navigate('/visit/navigate')}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors text-left group"
+              >
+                <span className="text-xs font-semibold text-white/70">
+                  {t('visitor.checkin.side.alreadyIn')}
+                </span>
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-[var(--color-brand-light-clay)] group-hover:text-white transition-colors">
+                  {t('visitor.checkin.side.openRoute')}
+                  <ArrowRight size={12} />
+                </span>
+              </button>
+            )}
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Step indicator */}
-          <div className="flex items-center px-1">
-            {steps.map((label, i) => (
-              <Fragment key={label}>
-                <div className="flex flex-col items-center">
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                      i < step
-                        ? 'bg-[var(--color-brand-terracotta)] text-white'
-                        : i === step
-                          ? 'bg-[var(--color-brand-terracotta)] text-white ring-4 ring-red-500/20'
-                          : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500'
-                    }`}
-                  >
-                    {i < step ? <Check size={16} strokeWidth={3} /> : i + 1}
-                  </div>
-                  <span
-                    className={`mt-1.5 text-[10px] font-semibold tracking-wide text-center ${
-                      i <= step ? 'text-slate-700 dark:text-slate-200' : 'text-slate-400 dark:text-slate-500'
-                    }`}
-                  >
-                    {label}
-                  </span>
-                </div>
-                {i < steps.length - 1 && (
-                  <div
-                    className={`flex-1 h-0.5 mx-1.5 mb-5 rounded-full transition-all ${
-                      i < step ? 'bg-[var(--color-brand-terracotta)]' : 'bg-slate-200 dark:bg-slate-700'
-                    }`}
-                  />
-                )}
-              </Fragment>
-            ))}
+        {/* ============ RIGHT PANEL ============ */}
+        <div className="relative p-6 sm:p-9 xl:p-11 flex flex-col min-h-[560px]">
+          {/* Mobile brand header */}
+          <div className="lg:hidden flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 shadow-md shadow-red-500/30 flex items-center justify-center">
+              <MapPin size={18} className="text-white" />
+            </div>
+            <div className="leading-tight">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[var(--color-brand-terracotta)]">
+                {t('visitor.checkin.eyebrow')}
+              </p>
+              <p className="text-sm font-black tracking-tight text-slate-900 dark:text-white truncate">
+                {orgName}
+              </p>
+            </div>
           </div>
 
-          {/* GPS proximity banner — only blocks self check-in when location was
-              granted AND the visitor is beyond the geofence. */}
-          {gpsState === 'pending' && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              <Loader size={14} className="animate-spin text-slate-400 dark:text-slate-500" />
-              Locating you…
-            </div>
-          )}
-          {gpsState === 'granted' && distanceToEntranceM != null && !isOutOfRange && (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
-              <Navigation size={14} />
-              You&apos;re {Math.round(distanceToEntranceM)} m from the entrance — in range.
-            </div>
-          )}
-          {gpsState === 'granted' && isOutOfRange && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/40 text-xs font-semibold text-amber-800 dark:text-amber-300">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-              <span>
-                You&apos;re {Math.round(distanceToEntranceM)} m from the entrance. Move within {CHECKIN_RADIUS_M} m of the site to check in.
-              </span>
-            </div>
-          )}
-          {(gpsState === 'denied' || gpsState === 'unavailable') && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
-              <AlertTriangle size={14} className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
-              <span>
-                Location access is off — you can still check in, but the receptionist will need to close your visit manually.
-              </span>
-            </div>
-          )}
+          {/* Step header */}
+          <div className="mb-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--color-brand-terracotta)] dark:text-[var(--color-brand-light-clay)]">
+              {t('visitor.checkin.stepOf', { current: step + 1, total: TOTAL_STEPS })}
+            </p>
+            <h2 className="mt-1.5 text-2xl sm:text-[1.7rem] font-black tracking-tight text-slate-900 dark:text-white">
+              {stepTitle}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{stepHelp}</p>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -24 }}
-              transition={{ duration: 0.2 }}
-              className="space-y-6"
-            >
-              {/* Step 1 — Location */}
-              {step === 0 && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.location')}</label>
-                  <div className="relative group">
-                    <select
-                      value={selectedLocationId}
-                      onChange={(e) => {
-                        setSelectedLocationId(e.target.value);
-                        setSelectedDestination('');
-                        setFormData((prev) => ({ ...prev, destination: '' }));
-                      }}
-                      className="w-full bg-white/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all"
-                    >
-                      {(state.locations || [])
-                        .filter((location) => location.status === 'active')
-                        .map((location) => {
-                          const orgName = state.organizations.find((org) => org.id === location.organizationId && org.status === 'active')?.name;
-                          if (!orgName) return null;
-                          return (
-                            <option key={location.id} value={location.id}>
-                              {`${orgName} | ${location.name}`}
-                            </option>
-                          );
-                        })}
-                    </select>
-                  </div>
-                </div>
-              )}
+            {/* progress bar */}
+            <div className="mt-4 h-1 w-full rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-500"
+                initial={false}
+                animate={{ width: `${((step + 1) / TOTAL_STEPS) * 100}%` }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              />
+            </div>
+          </div>
 
-              {/* Step 2 — Your details (name + ID/phone) */}
-              {step === 1 && (
-                <>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.fullName')}</label>
-                    <div className="relative group">
-                      <User size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showNameError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
-                      <input
-                        type="text"
-                        required
-                        autoFocus
-                        aria-invalid={Boolean(showNameError)}
-                        aria-describedby={showNameError ? 'visitor-name-error' : undefined}
-                        className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
-                          showNameError
-                            ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
-                            : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
-                        }`}
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
+          <form onSubmit={handleSubmit} className="flex-1 flex flex-col">
+            {/* GPS proximity banner */}
+            {gpsState === 'pending' && (
+              <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <Loader size={14} className="animate-spin text-slate-400 dark:text-slate-500" />
+                {t('visitor.checkin.locating')}
+              </div>
+            )}
+            {gpsState === 'granted' && distanceToEntranceM != null && !isOutOfRange && (
+              <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <Navigation size={14} />
+                {t('visitor.checkin.inRange', { meters: Math.round(distanceToEntranceM) })}
+              </div>
+            )}
+            {gpsState === 'granted' && isOutOfRange && (
+              <div className="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/40 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+                <span>
+                  {t('visitor.checkin.outOfRange', {
+                    meters: Math.round(distanceToEntranceM),
+                    radius: CHECKIN_RADIUS_M,
+                  })}
+                </span>
+              </div>
+            )}
+            {(gpsState === 'denied' || gpsState === 'unavailable') && (
+              <div className="flex items-start gap-2 mb-4 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
+                <span>{t('visitor.checkin.locationOff')}</span>
+              </div>
+            )}
+
+            {/* Step body */}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, x: 18 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -18 }}
+                transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+                className="space-y-5"
+              >
+                {/* Step 1 — Location */}
+                {step === 0 && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.14em] mb-1.5">
+                      {t('visitor.checkin.location')}
+                    </label>
+                    <div className="relative">
+                      <Compass
+                        size={17}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                      />
+                      <select
+                        value={selectedLocationId}
+                        onChange={(e) => {
+                          setSelectedLocationId(e.target.value);
+                          setSelectedDestination('');
+                          setFormData((prev) => ({ ...prev, destination: '' }));
+                        }}
+                        className="w-full appearance-none bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-10 h-12 outline-none focus:border-[var(--color-brand-terracotta)] focus:ring-4 focus:ring-[var(--color-brand-terracotta)]/15 transition-all font-medium"
+                      >
+                        {(state.locations || [])
+                          .filter((location) => location.status === 'active')
+                          .map((location) => {
+                            const orgN = state.organizations.find(
+                              (org) =>
+                                org.id === location.organizationId && org.status === 'active',
+                            )?.name;
+                            if (!orgN) return null;
+                            return (
+                              <option key={location.id} value={location.id}>
+                                {`${orgN} | ${location.name}`}
+                              </option>
+                            );
+                          })}
+                      </select>
+                      <ArrowRight
+                        size={14}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none"
                       />
                     </div>
-                    {showNameError && (
-                      <p id="visitor-name-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
-                        {nameError}
-                      </p>
-                    )}
                   </div>
+                )}
 
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('visitor.checkin.idOrPhone')}</label>
-                    <div className="relative group">
-                      <Hash size={18} className={`absolute left-4 top-1/2 -translate-y-1/2 transition-colors ${showIdOrPhoneError ? 'text-red-500' : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'}`} />
-                      <input
-                        type="text"
+                {/* Step 2 — Identity */}
+                {step === 1 && (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.14em] mb-1.5">
+                        {t('visitor.checkin.fullName')}
+                      </label>
+                      <div className="relative">
+                        <User
+                          size={17}
+                          className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors ${
+                            showNameError
+                              ? 'text-red-500'
+                              : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'
+                          }`}
+                        />
+                        <input
+                          type="text"
+                          required
+                          autoFocus
+                          aria-invalid={Boolean(showNameError)}
+                          aria-describedby={showNameError ? 'visitor-name-error' : undefined}
+                          className={`w-full bg-white dark:bg-slate-900/60 border text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl pl-11 pr-4 h-12 outline-none focus:ring-4 transition-all font-medium ${
+                            showNameError
+                              ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500/15'
+                              : 'border-slate-200 dark:border-slate-700 focus:border-[var(--color-brand-terracotta)] focus:ring-[var(--color-brand-terracotta)]/15'
+                          }`}
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          onBlur={() => setTouched((prev) => ({ ...prev, name: true }))}
+                        />
+                      </div>
+                      {showNameError && (
+                        <p
+                          id="visitor-name-error"
+                          className="text-[11px] font-semibold text-red-600 dark:text-red-400 mt-1.5 flex items-center gap-1"
+                        >
+                          <AlertTriangle size={11} />
+                          {nameError}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.14em] mb-1.5">
+                        {t('visitor.checkin.idOrPhone')}
+                      </label>
+                      <div className="relative">
+                        <Hash
+                          size={17}
+                          className={`absolute left-3.5 top-1/2 -translate-y-1/2 transition-colors ${
+                            showIdOrPhoneError
+                              ? 'text-red-500'
+                              : 'text-slate-400 group-focus-within:text-[var(--color-brand-terracotta)]'
+                          }`}
+                        />
+                        <input
+                          type="text"
+                          required
+                          inputMode="tel"
+                          autoComplete="tel"
+                          placeholder={t('visitor.checkin.idOrPhoneHint')}
+                          aria-invalid={Boolean(showIdOrPhoneError)}
+                          aria-describedby={
+                            showIdOrPhoneError ? 'visitor-idphone-error' : 'visitor-idphone-hint'
+                          }
+                          className={`w-full bg-white dark:bg-slate-900/60 border text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl pl-11 pr-4 h-12 outline-none focus:ring-4 transition-all font-medium ${
+                            showIdOrPhoneError
+                              ? 'border-red-400 dark:border-red-500/60 focus:border-red-500 focus:ring-red-500/15'
+                              : 'border-slate-200 dark:border-slate-700 focus:border-[var(--color-brand-terracotta)] focus:ring-[var(--color-brand-terracotta)]/15'
+                          }`}
+                          value={formData.idOrPhone}
+                          onChange={(e) =>
+                            setFormData({ ...formData, idOrPhone: e.target.value })
+                          }
+                          onBlur={() => setTouched((prev) => ({ ...prev, idOrPhone: true }))}
+                        />
+                      </div>
+                      {showIdOrPhoneError ? (
+                        <p
+                          id="visitor-idphone-error"
+                          className="text-[11px] font-semibold text-red-600 dark:text-red-400 mt-1.5 flex items-center gap-1"
+                        >
+                          <AlertTriangle size={11} />
+                          {idOrPhoneError}
+                        </p>
+                      ) : (
+                        <p
+                          id="visitor-idphone-hint"
+                          className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1.5"
+                        >
+                          {t('visitor.checkin.idOrPhoneHint')}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Step 3 — Destination */}
+                {step === 2 && (
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-[0.14em] mb-1.5">
+                      {t('visitor.checkin.dest')}
+                    </label>
+                    <div className="relative">
+                      <MapPin
+                        size={17}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                      />
+                      <select
+                        value={selectedDestination}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setSelectedDestination(next);
+                          if (next && next !== 'other') {
+                            const label =
+                              destinationOptions.find((option) => option.value === next)?.label || '';
+                            setFormData((prev) => ({ ...prev, destination: label }));
+                          } else {
+                            setFormData((prev) => ({ ...prev, destination: '' }));
+                          }
+                        }}
+                        className="w-full appearance-none bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-10 h-12 outline-none focus:border-[var(--color-brand-terracotta)] focus:ring-4 focus:ring-[var(--color-brand-terracotta)]/15 transition-all font-medium"
                         required
-                        inputMode="tel"
-                        autoComplete="tel"
-                        placeholder={t('visitor.checkin.idOrPhoneHint')}
-                        aria-invalid={Boolean(showIdOrPhoneError)}
-                        aria-describedby={showIdOrPhoneError ? 'visitor-idphone-error' : 'visitor-idphone-hint'}
-                        className={`w-full bg-white/50 dark:bg-slate-900/50 border text-slate-800 dark:text-slate-100 rounded-xl pl-11 pr-4 py-3 outline-none focus:ring-2 focus:border-transparent transition-all ${
-                          showIdOrPhoneError
-                            ? 'border-red-400 dark:border-red-500/60 focus:ring-red-400 dark:focus:ring-red-500'
-                            : 'border-slate-200 dark:border-slate-700 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500'
-                        }`}
-                        value={formData.idOrPhone}
-                        onChange={(e) => setFormData({ ...formData, idOrPhone: e.target.value })}
-                        onBlur={() => setTouched((prev) => ({ ...prev, idOrPhone: true }))}
+                      >
+                        <option value="" disabled>
+                          {t('visitor.checkin.selectDest')}
+                        </option>
+                        {destinationOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                        <option value="other">{t('visitor.checkin.other')}</option>
+                      </select>
+                      <ArrowRight
+                        size={14}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 rotate-90 pointer-events-none"
                       />
                     </div>
-                    {showIdOrPhoneError ? (
-                      <p id="visitor-idphone-error" className="text-xs font-semibold text-red-600 dark:text-red-400 pl-1 pt-1">
-                        {idOrPhoneError}
-                      </p>
-                    ) : (
-                      <p id="visitor-idphone-hint" className="text-[11px] font-medium text-slate-500 dark:text-slate-400 pl-1 pt-1">
-                        {t('visitor.checkin.idOrPhoneHint')}
-                      </p>
+
+                    {selectedDestination === 'other' && (
+                      <textarea
+                        required
+                        rows={3}
+                        placeholder={t('visitor.checkin.destPlaceholder')}
+                        className="mt-3 w-full bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl p-4 outline-none focus:border-[var(--color-brand-terracotta)] focus:ring-4 focus:ring-[var(--color-brand-terracotta)]/15 transition-all resize-none font-medium"
+                        value={formData.destination}
+                        onChange={(e) =>
+                          setFormData({ ...formData, destination: e.target.value })
+                        }
+                      />
                     )}
                   </div>
-                </>
-              )}
+                )}
+              </motion.div>
+            </AnimatePresence>
 
-              {/* Step 3 — Destination */}
-              {step === 2 && (
-                <div className="space-y-1">
-                  <label className="text-sm font-bold text-slate-800 dark:text-slate-200 pl-1">{t('visitor.checkin.dest')}</label>
-                  <select
-                    value={selectedDestination}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setSelectedDestination(next);
-                      if (next && next !== 'other') {
-                        const label = destinationOptions.find((option) => option.value === next)?.label || '';
-                        setFormData((prev) => ({ ...prev, destination: label }));
-                      } else {
-                        setFormData((prev) => ({ ...prev, destination: '' }));
-                      }
-                    }}
-                    className="w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all shadow-inner"
-                    required
+            {/* Spacer pushes buttons to bottom */}
+            <div className="flex-1 min-h-6" />
+
+            {/* Buttons */}
+            {isProcessing ? (
+              <div className="w-full py-4 mt-6 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-3 border border-slate-200 dark:border-slate-700">
+                <Loader
+                  className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400"
+                  size={20}
+                />
+                <span className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                  {t('visitor.checkin.analyzing')}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 mt-6">
+                {step > 0 && (
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="inline-flex items-center justify-center gap-1.5 px-5 h-12 rounded-xl font-bold text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
                   >
-                    <option value="" disabled>
-                      {t('visitor.checkin.selectDest')}
-                    </option>
-                    {destinationOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                    <option value="other">{t('visitor.checkin.other')}</option>
-                  </select>
+                    <ArrowLeft size={16} /> {t('visitor.checkin.back')}
+                  </button>
+                )}
 
-                  {selectedDestination === 'other' ? (
-                    <textarea
-                      required
-                      rows={3}
-                      placeholder={t('visitor.checkin.destPlaceholder')}
-                      className="mt-3 w-full bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl p-4 outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:focus:ring-red-500 focus:border-transparent transition-all resize-none shadow-inner"
-                      value={formData.destination}
-                      onChange={(e) => setFormData({ ...formData, destination: e.target.value })}
-                    />
-                  ) : null}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-
-          {/* Step navigation */}
-          {isProcessing ? (
-            <div className="w-full py-4 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center gap-3 border border-slate-200 dark:border-slate-700">
-              <Loader className="animate-spin text-[var(--color-brand-terracotta)] dark:text-red-400" size={24} />
-              <span className="text-sm font-semibold text-slate-600 dark:text-slate-300 tracking-wide">
-                {t('visitor.checkin.analyzing')}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              {step > 0 && (
-                <button
-                  type="button"
-                  onClick={goBack}
-                  className="flex items-center justify-center gap-1.5 px-5 py-4 rounded-xl font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all"
-                >
-                  <ArrowLeft size={18} /> {t('visitor.checkin.back')}
-                </button>
-              )}
-
-              {step < TOTAL_STEPS - 1 ? (
-                <motion.button
-                  whileHover={isStepValid(step) ? { scale: 1.02 } : undefined}
-                  whileTap={isStepValid(step) ? { scale: 0.98 } : undefined}
-                  type="button"
-                  onClick={goNext}
-                  disabled={!isStepValid(step)}
-                  aria-disabled={!isStepValid(step)}
-                  className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
-                    isStepValid(step)
-                      ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
-                      : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
-                  }`}
-                >
-                  {t('visitor.checkin.next')}
-                  <ArrowRight size={20} className={isStepValid(step) ? 'group-hover:translate-x-1 transition-transform' : ''} />
-                </motion.button>
-              ) : (() => {
-                const canSubmit = isFormValid && destinationChosen && !isOutOfRange;
-                return (
+                {step < TOTAL_STEPS - 1 ? (
                   <motion.button
-                    whileHover={canSubmit ? { scale: 1.02 } : undefined}
-                    whileTap={canSubmit ? { scale: 0.98 } : undefined}
-                    type="submit"
-                    disabled={!canSubmit}
-                    aria-disabled={!canSubmit}
-                    className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
-                      canSubmit
-                        ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
+                    whileTap={isStepValid(step) ? { scale: 0.985 } : undefined}
+                    type="button"
+                    onClick={goNext}
+                    disabled={!isStepValid(step)}
+                    aria-disabled={!isStepValid(step)}
+                    className={`relative flex-1 h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 group overflow-hidden transition-shadow ${
+                      isStepValid(step)
+                        ? 'bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
                     }`}
                   >
-                    {t('visitor.checkin.start')}
-                    <ArrowRight size={20} className={canSubmit ? 'group-hover:translate-x-1 transition-transform' : ''} />
+                    {isStepValid(step) && (
+                      <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                    )}
+                    <span>{t('visitor.checkin.next')}</span>
+                    <ArrowRight
+                      size={16}
+                      className={isStepValid(step) ? 'group-hover:translate-x-0.5 transition-transform' : ''}
+                    />
                   </motion.button>
-                );
-              })()}
-            </div>
-          )}
-        </form>
+                ) : (() => {
+                  const canSubmit = isFormValid && destinationChosen && !isOutOfRange;
+                  return (
+                    <motion.button
+                      whileTap={canSubmit ? { scale: 0.985 } : undefined}
+                      type="submit"
+                      disabled={!canSubmit}
+                      aria-disabled={!canSubmit}
+                      className={`relative flex-1 h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 group overflow-hidden transition-shadow ${
+                        canSubmit
+                          ? 'bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 text-white shadow-lg shadow-red-500/25 hover:shadow-red-500/40'
+                          : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      {canSubmit && (
+                        <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/15 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+                      )}
+                      <Navigation size={16} />
+                      <span>{t('visitor.checkin.start')}</span>
+                    </motion.button>
+                  );
+                })()}
+              </div>
+            )}
+          </form>
+        </div>
       </motion.div>
     </div>
   );

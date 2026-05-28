@@ -89,28 +89,31 @@ describe('CheckInPage geofence banner', () => {
     vi.restoreAllMocks();
   });
 
+  // The redesigned CheckInPage routes banner copy through t(), and the mocked
+  // useLanguage returns the translation key verbatim. We match on those keys.
+
   it('shows the out-of-range warning when GPS reports a far position', async () => {
     installGeolocation({ coords: { latitude: FAR_LAT, longitude: FAR_LNG } });
     render(<CheckInPage />);
-    expect(await screen.findByText(/Move within 100 m of the site/i)).toBeInTheDocument();
+    expect(await screen.findByText('visitor.checkin.outOfRange')).toBeInTheDocument();
   });
 
   it('shows the in-range banner when GPS is at the entrance', async () => {
     installGeolocation({ coords: { latitude: NEAR_LAT, longitude: NEAR_LNG } });
     render(<CheckInPage />);
-    expect(await screen.findByText(/in range/i)).toBeInTheDocument();
+    expect(await screen.findByText('visitor.checkin.inRange')).toBeInTheDocument();
   });
 
   it('shows the location-off banner when GPS permission is denied', async () => {
     installGeolocation({ error: { code: 1, message: 'Permission denied' } });
     render(<CheckInPage />);
-    expect(await screen.findByText(/Location access is off/i)).toBeInTheDocument();
+    expect(await screen.findByText('visitor.checkin.locationOff')).toBeInTheDocument();
   });
 
   it('shows the location-off banner when the browser has no geolocation API', async () => {
     // Simulate a browser without navigator.geolocation by deleting it.
     delete navigator.geolocation;
     render(<CheckInPage />);
-    expect(await screen.findByText(/Location access is off/i)).toBeInTheDocument();
+    expect(await screen.findByText('visitor.checkin.locationOff')).toBeInTheDocument();
   });
 });

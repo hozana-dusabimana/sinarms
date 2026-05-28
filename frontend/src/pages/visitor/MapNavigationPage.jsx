@@ -184,10 +184,19 @@ export default function MapNavigationPage() {
   const routeListRef = useRef(null);
   const lastRouteOriginRef = useRef(null);
 
+  // Tracks whether we've already tried to hydrate currentVisitor from the
+  // route state's visitorId. Without it, a slow refresh would leave us stuck
+  // on the loading screen forever if the visitor really doesn't exist.
+  const [routeHydrationAttempted, setRouteHydrationAttempted] = useState(false);
+
   useEffect(() => {
     const visitorIdFromRoute = routerLocation.state?.visitorId;
     if (visitorIdFromRoute && currentVisitor?.id !== visitorIdFromRoute) {
-      setCurrentVisitor(visitorIdFromRoute);
+      Promise.resolve(setCurrentVisitor(visitorIdFromRoute)).finally(() => {
+        setRouteHydrationAttempted(true);
+      });
+    } else if (visitorIdFromRoute) {
+      setRouteHydrationAttempted(true);
     }
   }, [currentVisitor?.id, routerLocation.state, setCurrentVisitor]);
 
@@ -440,6 +449,19 @@ export default function MapNavigationPage() {
   }
 
   if (!currentVisitor) {
+    // If the route still carries a visitorId we haven't finished resolving
+    // yet, hold on the loading screen instead of bouncing back to /visit —
+    // otherwise CheckInPage remounts at step 0 right after the visitor
+    // successfully checked in (a classic post-navigate state-propagation
+    // race).
+    const routeVisitorId = routerLocation.state?.visitorId;
+    if (routeVisitorId && !routeHydrationAttempted) {
+      return (
+        <div className="flex items-center justify-center h-[calc(100vh-80px)] text-slate-500 dark:text-slate-400 text-sm">
+          {t('visitor.nav.loading')}
+        </div>
+      );
+    }
     return <Navigate to="/visit" replace />;
   }
 
