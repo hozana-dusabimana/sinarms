@@ -33,4 +33,11 @@ export default defineConfig({
     css: false,
     globals: true,
   },
+  esbuild: {
+    // @vitejs/plugin-react@6 + vitest can drop the automatic JSX runtime in
+    // some setups, leaving test files with bare `<Component />` JSX that
+    // compiles to `React.createElement(...)` with no `React` in scope. Inject
+    // the import so existing tests don't all fail with "React is not defined".
+    jsxInject: "import React from 'react'",
+  },
 })

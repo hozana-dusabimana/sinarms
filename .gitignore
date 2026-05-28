@@ -15,7 +15,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .eslintcache
-
+.claude/
 # Builds
 dist/
 .vite/

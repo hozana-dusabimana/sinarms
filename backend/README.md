@@ -70,8 +70,9 @@ This means if you run `npm start`, the required tables are created immediately b
 
 ## Demo Accounts
 
-- `admin@ruliba.rw` / `Admin123!`
-- `reception@ruliba.rw` / `Reception123!`
+- `admin@sinarms.rw` / `Admin123!` (system admin)
+- `reception@ruliba.rw` / `Reception123!` (Ruliba Clays)
+- `reception@tumbacollege.ac.rw` / `Reception123!` (RP Tumba College)
 
 ## Tests
 

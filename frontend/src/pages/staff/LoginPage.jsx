@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, ArrowRight, Globe2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -51,10 +51,12 @@ export default function LoginPage() {
         className="w-full max-w-md glass-card p-8 sm:p-12 relative z-10"
       >
         <div className="text-center mb-10">
-          <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-500 rounded-2xl shadow-lg shadow-red-500/20 flex items-center justify-center mb-6">
-            <span className="text-white font-bold tracking-widest text-xl">RC</span>
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{t('staff.login.title')}</h2>
+          <Link to="/" className="inline-block group" aria-label="Go to home">
+            <div className="w-16 h-16 mx-auto bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-500 rounded-2xl shadow-lg shadow-red-500/20 flex items-center justify-center mb-6 transition-transform group-hover:scale-105">
+              <span className="text-white font-bold tracking-widest text-xl">RC</span>
+            </div>
+            <h2 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white group-hover:text-[var(--color-brand-terracotta)] dark:group-hover:text-red-400 transition-colors">{t('staff.login.title')}</h2>
+          </Link>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">{t('staff.login.subtitle')}</p>
         </div>
 

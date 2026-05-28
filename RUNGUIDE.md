@@ -109,10 +109,11 @@ Open `http://localhost:5173` in your browser.
 
 Seeded accounts (set in `backend/src/data/seed.js`):
 
-| Role         | Email                  | Password        |
-|--------------|------------------------|-----------------|
-| Admin        | `admin@ruliba.rw`      | `Admin123!`     |
-| Receptionist | `reception@ruliba.rw`  | `Reception123!` |
+| Role                  | Email                            | Password        |
+|-----------------------|----------------------------------|-----------------|
+| System Admin          | `admin@sinarms.rw`               | `Admin123!`     |
+| Receptionist (Ruliba) | `reception@ruliba.rw`            | `Reception123!` |
+| Receptionist (Tumba)  | `reception@tumbacollege.ac.rw`   | `Reception123!` |
 
 Visitors check in from the landing page — no login required.
 
@@ -214,7 +215,7 @@ What you get:
 | frontend   | http://localhost:5173     | Vite dev server with hot reload — open this      |
 | backend    | http://localhost:4000     | Express API; auto-migrates and seeds on boot     |
 | ai         | http://localhost:8001     | FastAPI engine (`/healthz`)                      |
-| db         | localhost:3307            | MySQL 8 (3307 so it won't clash with XAMPP)      |
+| db         | localhost:3308            | MySQL 8 (3308 so it won't clash with a local MySQL) |
 
 Notes:
 

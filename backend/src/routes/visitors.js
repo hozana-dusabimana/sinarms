@@ -14,13 +14,20 @@ const {
 
 const router = express.Router();
 
-router.post('/checkin', async (req, res) => {
-  const result = await registerVisitor({
-    actorUser: null,
-    payload: req.body,
-    source: 'self',
-  });
-  return res.json(result);
+router.post('/checkin', async (req, res, next) => {
+  try {
+    const result = await registerVisitor({
+      actorUser: null,
+      payload: req.body,
+      source: 'self',
+    });
+    return res.json(result);
+  } catch (err) {
+    if (err && err.status === 422) {
+      return res.status(422).json({ message: err.message, code: err.code });
+    }
+    return next(err);
+  }
 });
 
 router.post('/qr-checkin', async (req, res) => {

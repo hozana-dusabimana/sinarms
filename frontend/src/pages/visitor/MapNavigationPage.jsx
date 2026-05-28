@@ -6,6 +6,7 @@ import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getLocationById, getNode } from '../../lib/sinarmsEngine';
+import { CHECKOUT_RADIUS_M, CHECKOUT_DEBOUNCE_MS } from '../../lib/geo';
 
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Rectangle, ImageOverlay, useMap } from 'react-leaflet';
 import L from 'leaflet';
@@ -161,7 +162,7 @@ function roundRouteCorners(points, radiusFrac = 0.3, samples = 8) {
 export default function MapNavigationPage() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { state, currentVisitor, setCurrentVisitor, moveVisitor, isReady } = useSinarms();
+  const { state, currentVisitor, setCurrentVisitor, moveVisitor, checkoutVisitor, isReady } = useSinarms();
   const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [livePosition, setLivePosition] = useState(null);
@@ -177,6 +178,8 @@ export default function MapNavigationPage() {
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
   const arrivalAnnouncedRef = useRef(null);
+  const outsideSinceRef = useRef(null);
+  const autoCheckoutInFlightRef = useRef(false);
   const mapRef = useRef(null);
   const routeListRef = useRef(null);
   const lastRouteOriginRef = useRef(null);
@@ -309,6 +312,50 @@ export default function MapNavigationPage() {
   useEffect(() => {
     lastAdvancedNodeRef.current = null;
   }, [currentVisitor?.destinationNodeId, currentVisitor?.locationId]);
+
+  // Geofenced auto-checkout: when the visitor's live GPS drifts beyond the
+  // exit radius continuously for the debounce window, end their visit and
+  // send them to the survey page. We measure distance to the *nearest* map
+  // node (any office/corridor on the campus), not to the entrance — a big
+  // campus like RP Tumba is 350 m across, so a visitor in a far corner could
+  // legitimately be hundreds of metres from the gate while still inside.
+  // Sustained-readings debounce stops a single noisy GPS fix from triggering.
+  useEffect(() => {
+    if (!currentVisitor?.id || currentVisitor.status !== 'active') return;
+    if (!isValidLatLng(livePosition)) {
+      outsideSinceRef.current = null;
+      return;
+    }
+    const mapObj = getLocationMap(state, currentVisitor.locationId);
+    const nodes = mapObj?.nodes || [];
+    if (nodes.length === 0) return;
+
+    let minDistM = Infinity;
+    for (const node of nodes) {
+      const pos = getNodeLatLng(node);
+      if (!isValidLatLng(pos)) continue;
+      const d = distanceMeters(livePosition, pos);
+      if (d < minDistM) minDistM = d;
+    }
+    if (!Number.isFinite(minDistM)) return;
+
+    if (minDistM <= CHECKOUT_RADIUS_M) {
+      outsideSinceRef.current = null;
+      return;
+    }
+
+    if (outsideSinceRef.current == null) {
+      outsideSinceRef.current = Date.now();
+      return;
+    }
+    if (Date.now() - outsideSinceRef.current < CHECKOUT_DEBOUNCE_MS) return;
+    if (autoCheckoutInFlightRef.current) return;
+
+    autoCheckoutInFlightRef.current = true;
+    checkoutVisitor(currentVisitor.id, { keepActive: true })
+      .then(() => navigate('/visit/checkout'))
+      .catch(() => { autoCheckoutInFlightRef.current = false; outsideSinceRef.current = null; });
+  }, [livePosition, currentVisitor?.id, currentVisitor?.status, currentVisitor?.locationId, state, checkoutVisitor, navigate]);
 
   // Arrival announcement: when the visitor reaches their destination, play a
   // spoken cue and a soft chime, and surface a toast banner. We only announce
@@ -903,12 +950,6 @@ export default function MapNavigationPage() {
                 </div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">{t('visitor.nav.routeInstructions')}</h3>
               </div>
-              <button
-                onClick={() => navigate('/visit/checkout')}
-                className="text-xs font-bold bg-white dark:bg-slate-100 text-slate-900 px-4 py-2 rounded-lg shadow-sm hover:scale-105 transition-transform border border-slate-200 dark:border-transparent"
-              >
-                {t('visitor.nav.endVisit')}
-              </button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">

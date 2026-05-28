@@ -1,5 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 let mockSinarms = null;
@@ -9,11 +8,24 @@ vi.mock('../context/SinarmsContext', () => ({
   useSinarms: () => mockSinarms,
 }));
 
+vi.mock('../context/LanguageContext', () => ({
+  useLanguage: () => ({
+    language: 'en',
+    languages: ['en', 'fr', 'rw'],
+    setLanguage: vi.fn(),
+    label: 'EN',
+    cycleLanguage: vi.fn(),
+    // t returns the key so we can match by translation key in assertions.
+    t: (key) => key,
+  }),
+}));
+
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
     useNavigate: () => navigateMock,
+    useSearchParams: () => [new URLSearchParams(), vi.fn()],
   };
 });
 
@@ -26,7 +38,9 @@ function buildState({ withLocations = true } = {}) {
 
   return {
     organizations: [{ id: 'org-1', name: 'Ruliba Clays Ltd', status: 'active' }],
-    locations: [{ id: 'loc-1', organizationId: 'org-1', name: 'Head Office - Kigali', status: 'active' }],
+    locations: [
+      { id: 'loc-1', organizationId: 'org-1', name: 'Head Office - Kigali', status: 'active' },
+    ],
     maps: {
       'loc-1': {
         nodes: [
@@ -41,65 +55,134 @@ function buildState({ withLocations = true } = {}) {
   };
 }
 
+// We never want the proximity gate to interfere with these legacy happy-path
+// tests. We install a stub geolocation that immediately reports a permission
+// error — that's the "Location access is off" branch in the component, which
+// permits self check-in and sends null GPS coords.
+function disableGeolocation() {
+  const watchPosition = vi.fn((_onSuccess, onError) => {
+    if (onError) onError({ code: 1, message: 'Permission denied' });
+    return 1;
+  });
+  Object.defineProperty(navigator, 'geolocation', {
+    value: { watchPosition, clearWatch: vi.fn() },
+    configurable: true,
+    writable: true,
+  });
+}
+
+function clickNext() {
+  fireEvent.click(screen.getByRole('button', { name: /visitor\.checkin\.next/i }));
+}
+
 describe('CheckInPage', () => {
   beforeEach(() => {
+    disableGeolocation();
     navigateMock = vi.fn();
     mockSinarms = {
       state: buildState(),
       classifyVisitorDestination: vi.fn(),
       registerVisitor: vi.fn().mockResolvedValue({ id: 'visitor-1' }),
+      qrCheckin: vi.fn(),
+      isReady: true,
     };
     vi.spyOn(window, 'alert').mockImplementation(() => {});
   });
 
-  it('renders location select and destination select, and can submit using a selected destination', async () => {
-    const user = userEvent.setup();
+  // Note: we don't `delete navigator.geolocation` between tests because the
+  // CheckInPage's GPS-watcher cleanup runs at unmount and would crash on a
+  // missing property. beforeEach re-installs the stub afresh each test.
+
+  // We use fireEvent throughout instead of userEvent because the combination
+  // of React 19 + the framer-motion stub mangles userEvent's synthetic events
+  // and the controlled inputs never receive their onChange. fireEvent fires
+  // the underlying DOM event directly and reaches React's normal handlers.
+
+  it('renders location select on step 1 and lets you submit a selected destination', async () => {
     render(<CheckInPage />);
 
-    expect(screen.getByText('Location')).toBeInTheDocument();
-    expect(screen.getByText('Full Name')).toBeInTheDocument();
-    expect(screen.getByText('ID or Phone')).toBeInTheDocument();
-    expect(screen.getByText(/Where are you going\?/i)).toBeInTheDocument();
-
-    const locationSelect = screen.getByText('Location').parentElement.querySelector('select');
-    expect(locationSelect).toBeTruthy();
+    // Step 1: location select is visible and pre-populated.
     expect(screen.getByText('Ruliba Clays Ltd | Head Office - Kigali')).toBeInTheDocument();
+    clickNext();
 
-    const destinationSelect = screen.getByText(/Where are you going\?/i).parentElement.querySelector('select');
-    expect(destinationSelect).toBeTruthy();
+    // Step 2: fill name + id. findByText awaits the step transition.
+    await screen.findByText('visitor.checkin.fullName');
+    fireEvent.input(
+      screen.getByText('visitor.checkin.fullName').parentElement.querySelector('input'),
+      { target: { value: 'John Doe' } },
+    );
+    fireEvent.input(
+      screen.getByText('visitor.checkin.idOrPhone').parentElement.querySelector('input'),
+      { target: { value: '0788000000' } },
+    );
 
-    const nameInput = screen.getByText('Full Name').parentElement.querySelector('input');
-    const idInput = screen.getByText('ID or Phone').parentElement.querySelector('input');
-    expect(nameInput).toBeTruthy();
-    expect(idInput).toBeTruthy();
+    // Wait until the Next button reflects valid form state.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /visitor\.checkin\.next/i })).not.toBeDisabled();
+    });
+    clickNext();
 
-    await user.type(nameInput, 'John Doe');
-    await user.type(idInput, '0788000000');
-    await user.selectOptions(destinationSelect, 'finance-office');
+    // Step 3: destination select.
+    const destinationSelect = await screen.findByRole('combobox');
+    fireEvent.change(destinationSelect, { target: { value: 'finance-office' } });
 
-    await user.click(screen.getByRole('button', { name: /Start Navigation/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /visitor\.checkin\.start/i }));
 
+    await waitFor(() => {
+      expect(mockSinarms.registerVisitor).toHaveBeenCalled();
+    });
     expect(mockSinarms.classifyVisitorDestination).not.toHaveBeenCalled();
-    expect(mockSinarms.registerVisitor).toHaveBeenCalled();
-    expect(navigateMock).toHaveBeenCalledWith('/visit/navigate', { state: { visitorId: 'visitor-1' } });
+    expect(mockSinarms.registerVisitor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'John Doe',
+        idOrPhone: '0788000000',
+        destinationNodeId: 'finance-office',
+        source: 'self',
+        // GPS denied path sends null coords.
+        gpsLat: null,
+        gpsLng: null,
+      }),
+    );
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/visit/navigate', { state: { visitorId: 'visitor-1' } });
+    });
   });
 
   it('shows a textarea when destination is set to Other (type it)', async () => {
-    const user = userEvent.setup();
     render(<CheckInPage />);
 
-    const destinationSelect = screen.getByText(/Where are you going\?/i).parentElement.querySelector('select');
-    await user.selectOptions(destinationSelect, 'other');
+    clickNext();
+    await screen.findByText('visitor.checkin.fullName');
+    fireEvent.input(
+      screen.getByText('visitor.checkin.fullName').parentElement.querySelector('input'),
+      { target: { value: 'John Doe' } },
+    );
+    fireEvent.input(
+      screen.getByText('visitor.checkin.idOrPhone').parentElement.querySelector('input'),
+      { target: { value: '0788000000' } },
+    );
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /visitor\.checkin\.next/i })).not.toBeDisabled();
+    });
+    clickNext();
 
-    expect(screen.getByPlaceholderText(/e\.g\./i)).toBeInTheDocument();
+    const destinationSelect = await screen.findByRole('combobox');
+    fireEvent.change(destinationSelect, { target: { value: 'other' } });
+
+    // The "Other" branch renders a textarea below the select.
+    await waitFor(() => {
+      expect(document.querySelector('textarea')).toBeInTheDocument();
+    });
   });
 
-  it('alerts if submitting before locations are loaded', async () => {
+  it('does not advance from step 1 when no locations are loaded', () => {
+    // With no active locations the wizard cannot satisfy step 1's
+    // selectedLocationId check, so the "Next" button stays disabled and we
+    // never reach the submit. Asserting we stayed on step 1 captures that.
     mockSinarms.state = buildState({ withLocations: false });
     render(<CheckInPage />);
 
-    fireEvent.submit(screen.getByRole('button', { name: /Start Navigation/i }).closest('form'));
-    expect(window.alert).toHaveBeenCalled();
-    expect(String(window.alert.mock.calls[0][0])).toMatch(/loading locations/i);
+    const nextButton = screen.getByRole('button', { name: /visitor\.checkin\.next/i });
+    expect(nextButton).toBeDisabled();
   });
 });

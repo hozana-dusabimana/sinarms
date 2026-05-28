@@ -18,7 +18,7 @@ services:
       MYSQL_ROOT_PASSWORD: sinarms
       MYSQL_DATABASE: sinarms
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:

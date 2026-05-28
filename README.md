@@ -60,10 +60,11 @@ service is unreachable. Set `AI_ENGINE_DISABLED=1` to force the fallback path
 
 Seeded by `backend/src/data/seed.js` (run `npm run migrate` to apply).
 
-| Role         | Email                  | Password        |
-| ------------ | ---------------------- | --------------- |
-| Admin        | `admin@ruliba.rw`      | `Admin123!`     |
-| Receptionist | `reception@ruliba.rw`  | `Reception123!` |
+| Role                  | Email                            | Password        |
+| --------------------- | -------------------------------- | --------------- |
+| System Admin          | `admin@sinarms.rw`               | `Admin123!`     |
+| Receptionist (Ruliba) | `reception@ruliba.rw`            | `Reception123!` |
+| Receptionist (Tumba)  | `reception@tumbacollege.ac.rw`   | `Reception123!` |
 
 Visitors check in from the landing page — no login required.
 

@@ -6,7 +6,7 @@ import { useSinarms } from '../../context/SinarmsContext';
 
 export default function OrganizationSettings() {
   const navigate = useNavigate();
-  const { state, createOrganization, updateOrganization, deactivateOrganization, createLocation } = useSinarms();
+  const { state, createOrganization, updateOrganization, deactivateOrganization, createLocation, createUser } = useSinarms();
   const [isOrgModalOpen, setIsOrgModalOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [editingOrg, setEditingOrg] = useState(null);
@@ -271,19 +271,30 @@ export default function OrganizationSettings() {
                     try {
                       const dialog = document.querySelector('[data-org-modal]');
                       const inputs = dialog ? Array.from(dialog.querySelectorAll('input')) : [];
-                      const name = inputs[0]?.value || '';
-                      const contactEmail = inputs[1]?.value || '';
-                      const contactPhone = inputs[2]?.value || '';
+                      const name = inputs[0]?.value.trim() || '';
+                      const receptionistEmail = inputs[1]?.value.trim().toLowerCase() || '';
+                      const receptionistPassword = inputs[2]?.value || '';
 
-                      if (!name.trim()) {
+                      if (!name) {
                         window.alert('Organization name is required.');
                         return;
                       }
 
                       if (editingOrg) {
-                        await updateOrganization(editingOrg.id, { name, contactEmail, contactPhone });
+                        await updateOrganization(editingOrg.id, { name, contactEmail: receptionistEmail });
                       } else {
-                        await createOrganization({ name, contactEmail, contactPhone });
+                        if (!receptionistEmail || !receptionistPassword) {
+                          window.alert('Receptionist email and password are required.');
+                          return;
+                        }
+                        const org = await createOrganization({ name, contactEmail: receptionistEmail });
+                        await createUser({
+                          name: `${name} Reception`,
+                          email: receptionistEmail,
+                          password: receptionistPassword,
+                          role: 'receptionist',
+                          organizationId: org.id,
+                        });
                       }
 
                       setIsOrgModalOpen(false);

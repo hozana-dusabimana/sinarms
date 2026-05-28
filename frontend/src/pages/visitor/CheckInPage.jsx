@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, User, Hash, ArrowRight, ArrowLeft, Loader, QrCode, Check } from 'lucide-react';
+import { MapPin, User, Hash, ArrowRight, ArrowLeft, Loader, QrCode, Check, Navigation, AlertTriangle } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { CHECKIN_RADIUS_M, distanceMeters, isValidLatLng } from '../../lib/geo';
 
 // Accepts letters (incl. accents), spaces, hyphens, apostrophes — covers Rwandan,
 // French and English visitor names. Min length 2 enforced separately.
@@ -64,6 +65,46 @@ export default function CheckInPage() {
   const [selectedDestination, setSelectedDestination] = useState('');
   const [qrStatus, setQrStatus] = useState(null);
   const qrAttemptRef = useRef(false);
+  const [gpsCoords, setGpsCoords] = useState(null); // [lat, lng]
+  const [gpsState, setGpsState] = useState('pending'); // 'pending' | 'granted' | 'denied' | 'unavailable'
+
+  useEffect(() => {
+    if (!('geolocation' in navigator)) {
+      setGpsState('unavailable');
+      return undefined;
+    }
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGpsCoords([pos.coords.latitude, pos.coords.longitude]);
+        setGpsState('granted');
+      },
+      (err) => {
+        if (err?.code === 1) setGpsState('denied');
+        else setGpsState('unavailable');
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
+  const entranceCoords = useMemo(() => {
+    if (!selectedLocationId) return null;
+    const map = state.maps?.[selectedLocationId];
+    const entrance = map?.nodes?.find((n) => n.id === 'entrance');
+    if (!entrance || entrance.lat == null || entrance.lng == null) return null;
+    const pos = [Number(entrance.lat), Number(entrance.lng)];
+    return isValidLatLng(pos) ? pos : null;
+  }, [selectedLocationId, state.maps]);
+
+  const distanceToEntranceM = useMemo(() => {
+    if (!isValidLatLng(gpsCoords) || !isValidLatLng(entranceCoords)) return null;
+    return distanceMeters(gpsCoords, entranceCoords);
+  }, [gpsCoords, entranceCoords]);
+
+  const isOutOfRange =
+    gpsState === 'granted' &&
+    distanceToEntranceM != null &&
+    distanceToEntranceM > CHECKIN_RADIUS_M;
 
   const nameError = detectNameError(formData.name, t);
   const idOrPhoneError = detectIdOrPhoneError(formData.idOrPhone, t);
@@ -230,6 +271,8 @@ export default function CheckInPage() {
         locationId: selectedLocation.id,
         source: 'self',
         destinationNodeId,
+        gpsLat: isValidLatLng(gpsCoords) ? gpsCoords[0] : null,
+        gpsLng: isValidLatLng(gpsCoords) ? gpsCoords[1] : null,
       });
 
       navigate('/visit/navigate', { state: { visitorId: visitor.id } });
@@ -327,6 +370,37 @@ export default function CheckInPage() {
               </Fragment>
             ))}
           </div>
+
+          {/* GPS proximity banner — only blocks self check-in when location was
+              granted AND the visitor is beyond the geofence. */}
+          {gpsState === 'pending' && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <Loader size={14} className="animate-spin text-slate-400 dark:text-slate-500" />
+              Locating you…
+            </div>
+          )}
+          {gpsState === 'granted' && distanceToEntranceM != null && !isOutOfRange && (
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+              <Navigation size={14} />
+              You&apos;re {Math.round(distanceToEntranceM)} m from the entrance — in range.
+            </div>
+          )}
+          {gpsState === 'granted' && isOutOfRange && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/40 text-xs font-semibold text-amber-800 dark:text-amber-300">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                You&apos;re {Math.round(distanceToEntranceM)} m from the entrance. Move within {CHECKIN_RADIUS_M} m of the site to check in.
+              </span>
+            </div>
+          )}
+          {(gpsState === 'denied' || gpsState === 'unavailable') && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500" />
+              <span>
+                Location access is off — you can still check in, but the receptionist will need to close your visit manually.
+              </span>
+            </div>
+          )}
 
           <AnimatePresence mode="wait">
             <motion.div
@@ -514,23 +588,26 @@ export default function CheckInPage() {
                   {t('visitor.checkin.next')}
                   <ArrowRight size={20} className={isStepValid(step) ? 'group-hover:translate-x-1 transition-transform' : ''} />
                 </motion.button>
-              ) : (
-                <motion.button
-                  whileHover={isFormValid && destinationChosen ? { scale: 1.02 } : undefined}
-                  whileTap={isFormValid && destinationChosen ? { scale: 0.98 } : undefined}
-                  type="submit"
-                  disabled={!isFormValid || !destinationChosen}
-                  aria-disabled={!isFormValid || !destinationChosen}
-                  className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
-                    isFormValid && destinationChosen
-                      ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
-                      : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
-                  }`}
-                >
-                  {t('visitor.checkin.start')}
-                  <ArrowRight size={20} className={isFormValid && destinationChosen ? 'group-hover:translate-x-1 transition-transform' : ''} />
-                </motion.button>
-              )}
+              ) : (() => {
+                const canSubmit = isFormValid && destinationChosen && !isOutOfRange;
+                return (
+                  <motion.button
+                    whileHover={canSubmit ? { scale: 1.02 } : undefined}
+                    whileTap={canSubmit ? { scale: 0.98 } : undefined}
+                    type="submit"
+                    disabled={!canSubmit}
+                    aria-disabled={!canSubmit}
+                    className={`flex-1 font-bold py-4 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all group ${
+                      canSubmit
+                        ? 'bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 hover:from-red-600 hover:to-[var(--color-brand-terracotta)] text-white shadow-red-500/30'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 shadow-none cursor-not-allowed'
+                    }`}
+                  >
+                    {t('visitor.checkin.start')}
+                    <ArrowRight size={20} className={canSubmit ? 'group-hover:translate-x-1 transition-transform' : ''} />
+                  </motion.button>
+                );
+              })()}
             </div>
           )}
         </form>

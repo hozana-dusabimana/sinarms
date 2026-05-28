@@ -17,6 +17,7 @@ const {
 const { emit } = require('./realtime');
 const aiClient = require('./aiClient');
 const openrouterClient = require('./openrouterClient');
+const { CHECKIN_RADIUS_M, distanceMeters } = require('../lib/geo');
 
 function publicUser(user) {
   if (!user) {
@@ -458,6 +459,31 @@ function buildVisitorResponse(state, visitorId) {
 
 async function registerVisitor({ actorUser, payload, source }) {
   const state = await getState();
+
+  // Geofence self check-in: a visitor cannot register from far away.
+  // Receptionist-initiated registrations (source==='manual') bypass — the
+  // visitor is physically at reception. If the client didn't (or couldn't)
+  // send GPS we fall through; the auto-checkout watcher won't engage either,
+  // and the receptionist remains the manual escape hatch.
+  if (source === 'self' && Number.isFinite(payload.gpsLat) && Number.isFinite(payload.gpsLng)) {
+    const map = getLocationMap(state, payload.locationId);
+    const entrance = getNode(map, 'entrance');
+    if (entrance && Number.isFinite(Number(entrance.lat)) && Number.isFinite(Number(entrance.lng))) {
+      const distM = distanceMeters(
+        { lat: payload.gpsLat, lng: payload.gpsLng },
+        { lat: entrance.lat, lng: entrance.lng },
+      );
+      if (distM > CHECKIN_RADIUS_M) {
+        const err = new Error(
+          `You appear to be ${Math.round(distM)} m from the entrance. Please move within ${CHECKIN_RADIUS_M} m of the site to check in.`,
+        );
+        err.status = 422;
+        err.code = 'OUT_OF_RANGE';
+        throw err;
+      }
+    }
+  }
+
   const routeDecision = await resolveDestinationWithAi(
     state,
     payload.locationId,
@@ -662,14 +688,27 @@ async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locatio
 
 async function checkoutVisitor({ actorUser, visitorId, manual, survey }) {
   let responseVisitorId = null;
+  let didExit = false;
 
   const nextState = await mutateState((draft) => {
     const visitor = draft.visitors.find((entry) => entry.id === visitorId);
-    if (!visitor || visitor.status !== 'active') {
+    if (!visitor) {
+      return draft;
+    }
+
+    // Idempotent path: if the visitor was already exited (typically by the
+    // geofenced auto-checkout), allow a follow-up call to save their survey
+    // so the rating screen still works.
+    if (visitor.status !== 'active') {
+      if (survey) {
+        responseVisitorId = visitor.id;
+        visitor.survey = survey;
+      }
       return draft;
     }
 
     responseVisitorId = visitor.id;
+    didExit = true;
     const nowIso = new Date().toISOString();
     visitor.status = 'exited';
     visitor.checkoutTime = nowIso;
@@ -687,7 +726,7 @@ async function checkoutVisitor({ actorUser, visitorId, manual, survey }) {
   });
 
   const visitor = responseVisitorId ? buildVisitorResponse(nextState, responseVisitorId) : null;
-  if (visitor) {
+  if (visitor && didExit) {
     emit('visitor:checkout', visitor);
   }
 

@@ -4,7 +4,7 @@ async function login(agent, { email, password }) {
 }
 
 async function loginAdmin(agent) {
-  return login(agent, { email: 'admin@ruliba.rw', password: 'Admin123!' });
+  return login(agent, { email: 'admin@sinarms.rw', password: 'Admin123!' });
 }
 
 async function loginReceptionist(agent) {

@@ -297,6 +297,8 @@ export function SinarmsProvider({ children }) {
     source = 'self',
     hostName,
     destinationNodeId,
+    gpsLat = null,
+    gpsLng = null,
   }) {
     const endpoint = source === 'manual' ? '/api/visitors/manual-register' : '/api/visitors/checkin';
     const data = await request(endpoint, {
@@ -312,6 +314,8 @@ export function SinarmsProvider({ children }) {
         locationId,
         hostName,
         destinationNodeId,
+        gpsLat,
+        gpsLng,
       },
     });
 
@@ -417,7 +421,7 @@ export function SinarmsProvider({ children }) {
     return visitor;
   }
 
-  async function checkoutVisitor(visitorId, { manual = false, survey = null } = {}) {
+  async function checkoutVisitor(visitorId, { manual = false, survey = null, keepActive = false } = {}) {
     const visitor = manual && currentUser
       ? await request(`/api/visitors/${visitorId}/checkout-manual`, { method: 'post' })
       : await request('/api/visitors/checkout', {
@@ -430,7 +434,10 @@ export function SinarmsProvider({ children }) {
       visitors: upsertById(current.visitors, visitor),
     }));
 
-    if (activeVisitorId === visitorId) {
+    // Auto-checkout from the navigation page passes keepActive so the
+    // survey screen can still see currentVisitor and let the visitor rate
+    // their visit before we drop the active session.
+    if (!keepActive && activeVisitorId === visitorId) {
       setActiveVisitorId(null);
     }
 

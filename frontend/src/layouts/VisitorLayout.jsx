@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Globe2, LogOut } from 'lucide-react';
+import { ShieldCheck, Globe2 } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useSinarms } from '../context/SinarmsContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -111,7 +111,7 @@ export default function VisitorLayout() {
       {/* Header */}
       <header className="relative z-[1000] w-full border-b border-slate-200/60 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md flex-shrink-0">
         <div className={`${isNavigating ? 'w-full px-4 sm:px-6' : 'max-w-5xl mx-auto px-5 sm:px-8'} h-16 flex items-center justify-between`}>
-          <Link to="/visit" className="flex items-center gap-3 group">
+          <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--color-brand-terracotta)] to-red-600 shadow-md shadow-red-500/20 flex items-center justify-center transition-transform group-hover:scale-110">
               <ShieldCheck size={22} className="text-white" strokeWidth={2.4} />
             </div>
@@ -138,15 +138,6 @@ export default function VisitorLayout() {
                 label="Updates"
                 triggerClassName="relative p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors"
               />
-            )}
-            {isNavigating && (
-              <button
-                type="button"
-                onClick={() => navigate('/visit/checkout')}
-                className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-gradient-to-r from-[var(--color-brand-terracotta)] to-red-600 border border-red-500/40 text-xs font-bold text-white hover:brightness-110 transition-all shadow-md shadow-red-500/30"
-              >
-                <LogOut size={14} /> {t('visitor.nav.endVisit')}
-              </button>
             )}
             <button
               type="button"

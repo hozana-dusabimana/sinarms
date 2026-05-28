@@ -229,7 +229,8 @@ Write-Host "  backend  : http://localhost:4000"                 -ForegroundColor
 Write-Host "  ai       : http://localhost:8001/healthz"         -ForegroundColor Green
 Write-Host ""
 Write-Host "  Demo logins:" -ForegroundColor Magenta
-Write-Host "    admin@ruliba.rw / Admin123!"
-Write-Host "    reception@ruliba.rw / Reception123!"
+Write-Host "    admin@sinarms.rw / Admin123!              (system admin)"
+Write-Host "    reception@ruliba.rw / Reception123!       (Ruliba Clays)"
+Write-Host "    reception@tumbacollege.ac.rw / Reception123! (RP Tumba College)"
 Write-Host ""
 Write-Host "  Stop everything by closing the three service windows (or Ctrl+C in each)."

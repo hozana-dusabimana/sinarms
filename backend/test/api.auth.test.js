@@ -36,7 +36,7 @@ describeIf('API auth', () => {
 
   test('invalid login returns 401', async () => {
     const agent = supertest.agent(app);
-    const response = await agent.post('/api/auth/login').send({ email: 'admin@ruliba.rw', password: 'wrong' });
+    const response = await agent.post('/api/auth/login').send({ email: 'admin@sinarms.rw', password: 'wrong' });
     expect(response.status).toBe(401);
   });
 

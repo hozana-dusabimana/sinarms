@@ -36,7 +36,10 @@
       "Bash(npx eslint *)",
       "Bash(echo \"ESLINT EXIT: $?\")",
       "Bash(docker compose *)",
-      "Bash(\"/d/XAMPP/mysql/bin/mysql.exe\" -u root --skip-column-names -e \"SELECT email, role, status, CHAR_LENGTH\\(password_hash\\) AS hashlen, LEFT\\(password_hash,4\\) AS hashprefix FROM sinarms.users ORDER BY role, email;\")"
+      "Bash(\"/d/XAMPP/mysql/bin/mysql.exe\" -u root --skip-column-names -e \"SELECT email, role, status, CHAR_LENGTH\\(password_hash\\) AS hashlen, LEFT\\(password_hash,4\\) AS hashprefix FROM sinarms.users ORDER BY role, email;\")",
+      "Bash(git stash *)",
+      "Bash(node -p \"JSON.stringify\\(require\\('./package.json'\\).devDependencies, null, 2\\)\")",
+      "Bash(npm view *)"
     ]
   }
 }
