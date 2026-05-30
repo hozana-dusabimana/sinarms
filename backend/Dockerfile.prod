@@ -1,0 +1,18 @@
+# Production image for the SINARMS Node/Express backend.
+# No bind mount, no nodemon — installs production deps and runs the server
+# directly. The server auto-runs DB migrations and seeds on startup.
+FROM node:20-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Install only production dependencies in their own cached layer.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY . .
+
+EXPOSE 4000
+
+CMD ["node", "src/server.js"]
