@@ -2,12 +2,14 @@
 #
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 #
-# Topology on the shared CloudPanel host (mirrors the AIRA stack that already
-# works on this box):
+# Topology on the shared CloudPanel host (AIRA is co-hosted — do NOT collide):
 #   backend  127.0.0.1:4000  host network — reuses host MySQL on 127.0.0.1:3306
-#   ai       127.0.0.1:8001  host network — talks to backend on 127.0.0.1:4000
-#   frontend 127.0.0.1:5173  bridge w/ port map — static nginx, absolute API URLs
+#   ai       127.0.0.1:8002  host network — talks to backend on 127.0.0.1:4000
+#   frontend 127.0.0.1:5174  bridge w/ port map — static nginx, absolute API URLs
 #
+# PORT CHOICES (checked against what was already bound on this box):
+#   - 5173 is AIRA's dashboard, 8000/8001 are CloudPanel itself — all avoided.
+#   - so frontend uses 5174 and ai uses 8002.
 # backend/ai use host networking because on this box the docker bridge gateway
 # cannot reach the host MySQL (firewall-refused); host net + 127.0.0.1 is the
 # proven path (AIRA uses it). The frontend MUST stay on a bridge with an
@@ -28,7 +30,7 @@ services:
       # Bind to loopback only; the CloudPanel reverse proxy is the only ingress.
       BIND_HOST: 127.0.0.1
       DB_HOST: 127.0.0.1
-      AI_ENGINE_URL: http://127.0.0.1:8001
+      AI_ENGINE_URL: http://127.0.0.1:8002
     restart: unless-stopped
 
   ai:
@@ -41,7 +43,7 @@ services:
     environment:
       # Bind loopback only; reverse proxy fronts it.
       AI_HOST: 127.0.0.1
-      AI_PORT: "8001"
+      AI_PORT: "8002"
       SINARMS_BACKEND_URL: http://127.0.0.1:4000
     depends_on:
       - backend
@@ -58,5 +60,5 @@ services:
     # Bridge + explicit host-loopback port map (NOT host net — would grab :80).
     network_mode: bridge
     ports:
-      - "127.0.0.1:5173:80"
+      - "127.0.0.1:5174:80"
     restart: unless-stopped
