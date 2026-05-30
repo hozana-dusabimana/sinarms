@@ -1,0 +1,55 @@
+# SINARMS — production stack.
+#
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+#
+# Topology on the shared CloudPanel host:
+#   backend  127.0.0.1:4000  (host network — reuses host MySQL on 127.0.0.1)
+#   ai       127.0.0.1:8001  (host network — talks to backend on 127.0.0.1:4000)
+#   frontend 127.0.0.1:5173  (bridge, static nginx; built with absolute API URLs)
+#
+# Each public domain is a CloudPanel reverse-proxy site pointing at the matching
+# 127.0.0.1 port. No db/redis containers — the host's MySQL is reused.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    # Host network so the container can reach host MySQL bound to 127.0.0.1.
+    network_mode: host
+    env_file:
+      - .env.prod
+    environment:
+      NODE_ENV: production
+      # Bind to localhost only; the CloudPanel reverse proxy is the only ingress.
+      BIND_HOST: 127.0.0.1
+      PORT: "4000"
+    restart: unless-stopped
+
+  ai:
+    build:
+      context: ./ai
+      dockerfile: Dockerfile.prod
+    # Host network so it can reach the backend on 127.0.0.1:4000 and bind 8001.
+    network_mode: host
+    env_file:
+      - .env.prod
+    environment:
+      AI_HOST: 127.0.0.1
+      AI_PORT: "8001"
+      SINARMS_BACKEND_URL: http://127.0.0.1:4000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # Baked into the static bundle at build time (absolute prod URLs).
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_WS_URL: ${VITE_WS_URL}
+    # Static files only — bound to localhost; CloudPanel reverse proxy fronts it.
+    ports:
+      - "127.0.0.1:5173:80"
+    restart: unless-stopped

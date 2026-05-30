@@ -44,8 +44,12 @@ async function startServer() {
     socket.emit('system:ready', { connected: true });
   });
 
-  server.listen(port, () => {
-    console.log(`SINARMS backend listening on http://localhost:${port}`);
+  // Interface to bind. Defaults to all interfaces (dev / Docker bridge); set
+  // BIND_HOST=127.0.0.1 in production so a host-networked container is only
+  // reachable via the local reverse proxy, never directly from the internet.
+  const host = process.env.BIND_HOST || '0.0.0.0';
+  server.listen(port, host, () => {
+    console.log(`SINARMS backend listening on http://${host}:${port}`);
   });
 
   setInterval(runAlertRefresh, ALERT_REFRESH_INTERVAL_MS).unref();

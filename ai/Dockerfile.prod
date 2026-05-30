@@ -1,0 +1,38 @@
+# Production image for the SINARMS FastAPI AI engine.
+# Identical model stack to the dev image (CPU torch + MiniLM baked in) but runs
+# uvicorn WITHOUT --reload and with no bind mount. The MiniLM encoder is fetched
+# from HuggingFace at build time so the running container needs no network for
+# inference.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/opt/hf \
+    SENTENCE_TRANSFORMERS_HOME=/opt/hf/sentence-transformers \
+    HF_HUB_DISABLE_TELEMETRY=1 \
+    AI_HOST=127.0.0.1 \
+    AI_PORT=8001
+
+# libgomp1 is required by the torch CPU runtime (OpenMP).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# CPU-only torch keeps the image to a sane size (the default Linux wheel pulls
+# ~2GB of unused CUDA libraries).
+RUN pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+
+COPY requirements.txt ./
+RUN pip install -r requirements.txt
+
+# Bake the embedding model into the image (only model fetched from HF at build).
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')"
+
+COPY . .
+
+EXPOSE 8001
+
+# Bind to localhost only — the CloudPanel reverse proxy fronts this container.
+CMD ["sh", "-c", "uvicorn app.main:app --host ${AI_HOST} --port ${AI_PORT}"]

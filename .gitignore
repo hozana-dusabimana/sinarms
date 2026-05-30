@@ -6,6 +6,7 @@ logs/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 
 # Node
 node_modules/
@@ -52,3 +53,8 @@ ai/data/conversation_log.csv
 ai/data/external/quora_duplicate_questions.csv
 ai/data/external/*.zip
 ai/artifacts/local_chatbot/
+
+private-key.md
+deploy_prompt.md
+*.pem
+*.key
