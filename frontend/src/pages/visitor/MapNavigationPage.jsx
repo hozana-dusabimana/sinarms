@@ -11,6 +11,12 @@ import { CHECKOUT_RADIUS_M, CHECKOUT_DEBOUNCE_MS, clipPolylineFromPosition, near
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Rectangle, ImageOverlay, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
+// Reject GPS fixes coarser than this (metres). Phones fall back to Wi-Fi /
+// cell-tower triangulation when GPS is weak, which can be hundreds of metres
+// off and jump the marker to places the visitor never went. 75 m keeps real
+// GPS/Wi-Fi fixes while discarding the wild ones, on a campus only ~350 m wide.
+const MAX_GPS_ACCURACY_M = 75;
+
 // Leaflet default icon fix
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -220,6 +226,16 @@ export default function MapNavigationPage() {
     }
 
     const applyFix = (pos) => {
+      // Drop wildly imprecise fixes. Phones fall back to Wi-Fi / cell-tower
+      // triangulation when GPS is weak (e.g. indoors), which can report a
+      // position hundreds of metres off and jump the marker to a place the
+      // visitor never went. A campus-scale walk only needs GPS-grade accuracy,
+      // so ignore anything coarser than MAX_GPS_ACCURACY_M and keep the last
+      // good position instead. (Some browsers omit accuracy — accept those.)
+      const acc = pos?.coords?.accuracy;
+      if (typeof acc === 'number' && acc > MAX_GPS_ACCURACY_M) {
+        return;
+      }
       const next = [pos.coords.latitude, pos.coords.longitude];
       // Ignore sub-2 m jitter so the marker (and the GPS-dependent route/snap
       // effects) only update on real movement, not on every poll tick.
