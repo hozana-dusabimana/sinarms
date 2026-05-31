@@ -10,6 +10,12 @@ import { isValidLatLng, distanceMeters, bearingBetween, blendPosition } from './
 // mid-walk; instead coarse fixes are kept but down-weighted by blendPosition.
 const MAX_PLAUSIBLE_SPEED_MS = 35;
 const OUTLIER_ACCURACY_M = 40;
+// When the signal is weak (accuracy worse than this), a fix that "moved" less
+// than its own accuracy radius is indistinguishable from noise. We hold the
+// marker steady in that case so it — and the route anchored to it — stop
+// wandering while the visitor stands still. With a good fix we always track, so
+// real walking still registers.
+const STATIONARY_ACCURACY_M = 30;
 // Below this many metres of movement we don't recompute heading from two fixes
 // (the bearing of a 1 m jitter step is meaningless); we keep the previous one.
 const HEADING_MIN_STEP_M = 4;
@@ -66,19 +72,32 @@ export function useGeolocation({ enabled = true } = {}) {
         if (distanceMeters(prevRaw, next) / dt > MAX_PLAUSIBLE_SPEED_MS) return;
       }
 
-      // Heading: trust the device compass when it's moving, else derive it from
-      // the travel direction between two real fixes.
-      let heading = headingRef.current;
-      if (typeof c.heading === 'number' && !Number.isNaN(c.heading) && (c.speed == null || c.speed > 0.3)) {
-        heading = c.heading;
-      }
-      if (prevRaw && distanceMeters(prevRaw, next) >= HEADING_MIN_STEP_M) {
-        const b = bearingBetween(prevRaw, next);
-        if (b != null) heading = b;
-      }
-      headingRef.current = heading;
+      // Stationary hold: weak fix whose apparent move is within its own error
+      // radius → treat as standing still. Hold position AND heading so neither
+      // the marker nor the route (anchored to the marker) wander on noise.
+      const movedM = smoothedRef.current ? distanceMeters(smoothedRef.current, next) : Infinity;
+      const holdStill =
+        acc != null && acc > STATIONARY_ACCURACY_M && smoothedRef.current && movedM < acc;
 
-      const smoothed = blendPosition(smoothedRef.current, next, acc);
+      // Heading: trust the device compass when it's moving, else derive it from
+      // the travel direction between two real fixes. Frozen while holding still.
+      let heading = headingRef.current;
+      if (!holdStill) {
+        if (typeof c.heading === 'number' && !Number.isNaN(c.heading) && (c.speed == null || c.speed > 0.3)) {
+          heading = c.heading;
+        }
+        if (prevRaw && distanceMeters(prevRaw, next) >= HEADING_MIN_STEP_M) {
+          const b = bearingBetween(prevRaw, next);
+          if (b != null) heading = b;
+        }
+        headingRef.current = heading;
+      }
+
+      // Hold the SAME position reference when stationary so downstream effects
+      // keyed on it (route fetch, snap) don't re-run on noise.
+      const smoothed = holdStill
+        ? smoothedRef.current
+        : blendPosition(smoothedRef.current, next, acc);
       smoothedRef.current = smoothed;
       rawRef.current = next;
       lastTsRef.current = ts;
