@@ -45,4 +45,12 @@ module.exports = {
   frontendUrl: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || 'http://localhost:5173',
   dbConfig: buildDbConfig(),
   migrationsDir: path.join(__dirname, 'data', 'migrations'),
+  // When a visitor stops reporting position for this long, their GPS is most
+  // likely off / unavailable — the visitor app only advances position from a
+  // live GPS fix, so the session simply goes quiet. We deliberately do NOT
+  // auto-check these visitors out: an untracked session is indistinguishable
+  // from "GPS off but still on-site". Instead the server raises a scoped alert
+  // so the admin and the location's receptionist can verify and close the visit
+  // manually. Set to 0 to disable the escalation entirely.
+  visitorGpsLostAlertMin: Number(process.env.VISITOR_GPS_LOST_ALERT_MIN || 20),
 };

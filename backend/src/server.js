@@ -3,10 +3,12 @@ const { Server } = require('socket.io');
 const { port, corsOrigin } = require('./config');
 const { initStore, getState, mutateState } = require('./data/store');
 const { refreshAlerts } = require('./services/engine');
+const { escalateUntrackedVisitors } = require('./services/domain');
 const { createApp } = require('./app');
 const { setIO, emit } = require('./services/realtime');
 
 const ALERT_REFRESH_INTERVAL_MS = 60 * 1000;
+const UNTRACKED_ESCALATION_INTERVAL_MS = 60 * 1000;
 
 function alertsChanged(before, after) {
   if (before.length !== after.length) return true;
@@ -24,6 +26,17 @@ async function runAlertRefresh() {
     emit('alerts:refreshed', { at: new Date().toISOString() });
   } catch (error) {
     console.error('[alerts] refresh failed', error);
+  }
+}
+
+async function runUntrackedEscalation() {
+  try {
+    const escalated = await escalateUntrackedVisitors();
+    if (escalated.length) {
+      console.log(`[visitors] raised GPS-lost alert for ${escalated.length} untracked visitor(s).`);
+    }
+  } catch (error) {
+    console.error('[visitors] untracked escalation failed', error);
   }
 }
 
@@ -60,6 +73,7 @@ async function startServer() {
   });
 
   setInterval(runAlertRefresh, ALERT_REFRESH_INTERVAL_MS).unref();
+  setInterval(runUntrackedEscalation, UNTRACKED_ESCALATION_INTERVAL_MS).unref();
 
   return server;
 }

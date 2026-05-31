@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const QRCode = require('qrcode');
-const { jwtExpiresIn, jwtSecret } = require('../config');
+const { jwtExpiresIn, jwtSecret, visitorGpsLostAlertMin } = require('../config');
 const { adminPermissions, receptionistPermissions } = require('../data/seed');
 const { getState, mutateState } = require('../data/store');
 const {
@@ -733,6 +733,102 @@ async function checkoutVisitor({ actorUser, visitorId, manual, survey }) {
   return visitor;
 }
 
+// When a visitor's GPS is switched off or unavailable, the visitor app stops
+// reporting position — it only advances from a live GPS fix and the geofenced
+// auto-checkout cannot fire without one — so the session simply goes quiet.
+// We must NOT auto-check these visitors out: an untracked session looks exactly
+// like "GPS off but still on-site". Instead we escalate to staff — raising a
+// scoped GPS_LOST alert (admin sees all, the receptionist sees their own
+// location, via scopeAlerts) so a human verifies and checks the visitor out
+// manually. The alert is deduplicated per visitor and auto-resolves once GPS
+// resumes; alerts for visitors who do get checked out are resolved by
+// refreshAlerts. Returns the visitors newly escalated this pass.
+const GPS_LOST_RULE = 'GPS_LOST';
+
+async function escalateUntrackedVisitors({ nowIso = new Date().toISOString() } = {}) {
+  if (!(visitorGpsLostAlertMin > 0)) {
+    return [];
+  }
+
+  const auditPayloads = [];
+  const escalatedIds = [];
+  let changed = false;
+
+  const nextState = await mutateState((draft) => {
+    const activeKeys = new Set(
+      draft.alerts.filter((alert) => !alert.resolvedAt).map((alert) => alert.ruleKey),
+    );
+
+    draft.visitors.forEach((visitor) => {
+      if (visitor.status !== 'active') {
+        return;
+      }
+
+      const lastSeenIso = visitor.lastPositionUpdateAt || visitor.checkinTime;
+      const idleMin = minutesBetween(lastSeenIso, nowIso);
+      const ruleKey = `${visitor.id}:${GPS_LOST_RULE}`;
+      const alreadyAlerted = activeKeys.has(ruleKey);
+
+      // Position reporting has resumed (GPS back) — clear any standing alert.
+      if (idleMin < visitorGpsLostAlertMin) {
+        if (alreadyAlerted) {
+          draft.alerts.forEach((alert) => {
+            if (alert.ruleKey === ruleKey && !alert.resolvedAt) {
+              alert.resolvedAt = nowIso;
+              changed = true;
+            }
+          });
+        }
+        return;
+      }
+
+      if (alreadyAlerted) {
+        return;
+      }
+
+      const message = `${visitor.name} has not reported a position for ${idleMin} min — GPS may be off. Verify on-site and check them out manually if they have left.`;
+
+      draft.alerts.unshift({
+        id: createId('alert'),
+        visitorId: visitor.id,
+        type: GPS_LOST_RULE,
+        severity: 'medium',
+        zoneId: visitor.currentNodeId,
+        message,
+        triggeredAt: nowIso,
+        acknowledgedBy: null,
+        acknowledgedAt: null,
+        resolvedAt: null,
+        ruleKey,
+      });
+      activeKeys.add(ruleKey);
+
+      auditPayloads.push({
+        actionType: 'GPS_LOST_ALERT',
+        targetType: 'visitor',
+        targetId: visitor.id,
+        details: message,
+      });
+      escalatedIds.push(visitor.id);
+      changed = true;
+    });
+
+    // Alert mutations were applied in place above; fold the audit entries on top
+    // (addAudit clones, so chain only after the draft is fully mutated).
+    let working = draft;
+    auditPayloads.forEach((payload) => {
+      working = addAudit(working, null, payload);
+    });
+    return working;
+  });
+
+  if (changed) {
+    emit('alerts:refreshed', { at: nowIso });
+  }
+
+  return escalatedIds.map((id) => buildVisitorResponse(nextState, id)).filter(Boolean);
+}
+
 async function notifyDepartment({ actorUser, visitorId }) {
   let responseVisitorId = null;
 
@@ -1036,6 +1132,7 @@ module.exports = {
   resolveDestinationForLocation,
   resolveDestinationWithAi,
   rerouteVisitor,
+  escalateUntrackedVisitors,
   scopeAlerts,
   scopeVisitors,
   updateVisitorPosition,

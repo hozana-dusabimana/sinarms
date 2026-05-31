@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp } from 'lucide-react';
+import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp, WifiOff } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -109,6 +109,12 @@ export default function DashboardPage() {
 
   const scopedVisitors = state.visitors || [];
   const activeVisitors = scopedVisitors.filter((visitor) => visitor.status === 'active');
+  // Visitors with a standing GPS_LOST escalation — their app stopped reporting
+  // position (GPS likely off), so staff need to verify and check them out by
+  // hand. Surfaced as an inline badge on each affected row.
+  const gpsLostVisitorIds = new Set(
+    (activeAlerts || []).filter((alert) => alert.type === 'GPS_LOST').map((alert) => alert.visitorId),
+  );
   // Admins see visitors across every institution, so the directory needs an
   // Institution column to disambiguate rows. Scoped staff (receptionists) only
   // ever see their own institution, so the column is hidden for them.
@@ -394,6 +400,14 @@ export default function DashboardPage() {
                               {visitor.name.charAt(0)}
                             </div>
                             <span className="font-bold text-slate-800 dark:text-slate-200">{visitor.name}</span>
+                            {gpsLostVisitorIds.has(visitor.id) && (
+                              <span
+                                title={t('staff.gpsLost.hint')}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                              >
+                                <WifiOff size={11} /> {t('staff.gpsLost.badge')}
+                              </span>
+                            )}
                           </div>
                         </td>
                         {isAdmin && (
