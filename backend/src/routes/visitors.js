@@ -61,13 +61,20 @@ router.post('/checkout', async (req, res) => {
   return res.json(visitor);
 });
 
-router.post('/manual-register', requireAuth, requirePermission('manualRegister'), async (req, res) => {
-  const result = await registerVisitor({
-    actorUser: req.user,
-    payload: req.body,
-    source: 'manual',
-  });
-  return res.json(result);
+router.post('/manual-register', requireAuth, requirePermission('manualRegister'), async (req, res, next) => {
+  try {
+    const result = await registerVisitor({
+      actorUser: req.user,
+      payload: req.body,
+      source: 'manual',
+    });
+    return res.json(result);
+  } catch (err) {
+    if (err && err.status === 422) {
+      return res.status(422).json({ message: err.message, code: err.code });
+    }
+    return next(err);
+  }
 });
 
 router.post('/:id/checkout-manual', requireAuth, requirePermission('manualCheckout'), async (req, res) => {

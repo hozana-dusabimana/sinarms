@@ -69,7 +69,8 @@ function createToken(user) {
 function scopeVisitors(state, user, options = {}) {
   const includeHistory = options.includeHistory !== false;
   return state.visitors.filter((visitor) => {
-    if (!includeHistory && visitor.status !== 'active') {
+    const isActive = visitor.status === 'active';
+    if (!includeHistory && !isActive) {
       return false;
     }
 
@@ -87,11 +88,18 @@ function scopeVisitors(state, user, options = {}) {
 
     const sameOrg = visitor.organizationId === user.organizationId;
     const sameLocation = visitor.locationId === user.locationId;
-    if (options.allDays) {
-      return sameOrg && sameLocation;
+    if (!sameOrg || !sameLocation) {
+      return false;
     }
-    const sameDay = new Date(visitor.checkinTime).toDateString() === new Date().toDateString();
-    return sameOrg && sameLocation && sameDay;
+
+    // An active visitor is still on-site (not yet checked out), so they belong
+    // on the live dashboard no matter when they arrived. The day filter only
+    // applies to historical (exited) rows, to keep the directory from being
+    // flooded with past visits.
+    if (isActive || options.allDays) {
+      return true;
+    }
+    return new Date(visitor.checkinTime).toDateString() === new Date().toDateString();
   });
 }
 
@@ -108,6 +116,25 @@ function scopeAlerts(state, user) {
 
     if (!user || user.role === 'admin') {
       return true;
+    }
+
+    return visitor.organizationId === user.organizationId && visitor.locationId === user.locationId;
+  });
+}
+
+function scopeNotifications(state, user) {
+  return (state.notifications || []).filter((notification) => {
+    if (!user || user.role === 'admin') {
+      return true;
+    }
+
+    // Notifications only carry a visitorId, so ownership is resolved through the
+    // referenced visitor's organization/location. A notification whose visitor
+    // is missing (or belongs to another tenant) is never surfaced to scoped
+    // staff — otherwise a receptionist would see other institutions' check-ins.
+    const visitor = state.visitors.find((entry) => entry.id === notification.visitorId);
+    if (!visitor) {
+      return false;
     }
 
     return visitor.organizationId === user.organizationId && visitor.locationId === user.locationId;
@@ -174,8 +201,17 @@ function buildAnalytics(state, filters = {}) {
     totalVisitors: dailyCounts.get(date) || 0,
   }));
 
+  const today = new Date().toDateString();
+  const todayVisitors = visitors.filter(
+    (visitor) => visitor.checkinTime && new Date(visitor.checkinTime).toDateString() === today,
+  ).length;
+
   return {
     totalVisitors: visitors.length,
+    // Everyone who checked in today (active or already exited), so the staff
+    // "Total Today" card stays consistent with the live directory instead of
+    // showing an all-time count.
+    todayVisitors,
     activeVisitors: visitors.filter((visitor) => visitor.status === 'active').length,
     averageDuration,
     alertsToday: state.alerts.filter(
@@ -459,6 +495,29 @@ function buildVisitorResponse(state, visitorId) {
 
 async function registerVisitor({ actorUser, payload, source }) {
   const state = await getState();
+
+  // A visitor must be tied to a real, active location, and that location's
+  // organization is the source of truth — never the org the client happened to
+  // submit. This stops a check-in from landing under one institution's org while
+  // sitting in another institution's location (which would slip past the
+  // org+location tenant scoping on every staff dashboard).
+  const location = state.locations.find((entry) => entry.id === payload.locationId);
+  if (!location || location.status !== 'active') {
+    const err = new Error('A valid, active location is required to check in.');
+    err.status = 422;
+    err.code = 'LOCATION_INVALID';
+    throw err;
+  }
+
+  if (payload.organizationId && payload.organizationId !== location.organizationId) {
+    const err = new Error('The selected location does not belong to that organization.');
+    err.status = 422;
+    err.code = 'ORG_LOCATION_MISMATCH';
+    throw err;
+  }
+
+  // Pin the org to the location so a missing/odd client value can't desync them.
+  payload.organizationId = location.organizationId;
 
   // Geofence self check-in: a visitor cannot register from far away.
   // Receptionist-initiated registrations (source==='manual') bypass — the
@@ -1134,6 +1193,7 @@ module.exports = {
   rerouteVisitor,
   escalateUntrackedVisitors,
   scopeAlerts,
+  scopeNotifications,
   scopeVisitors,
   updateVisitorPosition,
   upsertUser,

@@ -1,7 +1,13 @@
 const express = require('express');
 const { getState } = require('../data/store');
 const { requireAuth } = require('../middleware/auth');
-const { buildAnalytics, publicUser, scopeAlerts, scopeVisitors } = require('../services/domain');
+const {
+  buildAnalytics,
+  publicUser,
+  scopeAlerts,
+  scopeNotifications,
+  scopeVisitors,
+} = require('../services/domain');
 
 const router = express.Router();
 
@@ -45,7 +51,7 @@ router.get('/staff', requireAuth, async (req, res) => {
       alerts: scopeAlerts(state, req.user),
       faq: isAdmin || req.user.role === 'receptionist' ? state.faq : [],
       auditLog: isAdmin ? state.auditLog : [],
-      notifications: state.notifications || [],
+      notifications: scopeNotifications(state, req.user),
     },
     analytics: isAdmin
       ? buildAnalytics(state)
