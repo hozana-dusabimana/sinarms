@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp, WifiOff } from 'lucide-react';
+import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp, WifiOff, MapPinOff } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -119,6 +119,10 @@ export default function DashboardPage() {
   // Institution column to disambiguate rows. Scoped staff (receptionists) only
   // ever see their own institution, so the column is hidden for them.
   const isAdmin = currentUser?.role === 'admin';
+  // A scoped staff member with no assigned location can't be tied to any
+  // visitors, so every list/stat on this page is necessarily empty. Surface an
+  // explicit banner instead of a silently blank dashboard that reads as "broken".
+  const needsLocation = !isAdmin && !currentUser?.locationId;
   const organizationName = (organizationId) =>
     (state.organizations || []).find((org) => org.id === organizationId)?.name || '—';
   const location = currentUser?.locationId
@@ -183,7 +187,7 @@ export default function DashboardPage() {
     },
     {
       label: t('staff.dashboard.stat.totalToday'),
-      value: (analytics?.totalVisitors ?? 0).toString(),
+      value: (analytics?.todayVisitors ?? 0).toString(),
       icon: <Users className="w-6 h-6" />,
       color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400',
     },
@@ -225,6 +229,16 @@ export default function DashboardPage() {
           </button>
         </div>
       </div>
+
+      {needsLocation && (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <MapPinOff className="w-5 h-5 mt-0.5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-bold text-amber-800 dark:text-amber-300">{t('staff.dashboard.noLocation.title')}</p>
+            <p className="text-sm text-amber-700 dark:text-amber-400/90 mt-0.5">{t('staff.dashboard.noLocation.body')}</p>
+          </div>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

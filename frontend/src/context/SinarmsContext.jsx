@@ -45,6 +45,7 @@ const EMPTY_STATE = {
 
 const EMPTY_ANALYTICS = {
   totalVisitors: 0,
+  todayVisitors: 0,
   activeVisitors: 0,
   averageDuration: 0,
   alertsToday: 0,
