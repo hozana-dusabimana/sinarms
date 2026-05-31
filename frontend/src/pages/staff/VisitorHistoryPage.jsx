@@ -15,6 +15,7 @@ import {
   Phone,
   Mail,
   Building2,
+  WifiOff,
 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -36,6 +37,17 @@ function daysAgo(n) {
   const d = startOfDay(new Date());
   d.setDate(d.getDate() - n);
   return d;
+}
+
+// Minutes a visitor has been on-site. Finished visits use the recorded
+// durationMin; still-active visits fall back to the elapsed time since check-in
+// so the column shows a live "so far" value instead of an empty dash.
+function visitorDurationMin(visitor) {
+  if (visitor.durationMin != null) return Number(visitor.durationMin);
+  if (visitor.status === 'active' && visitor.checkinTime) {
+    return Math.max(0, Math.round((Date.now() - new Date(visitor.checkinTime).getTime()) / 60000));
+  }
+  return null;
 }
 
 function downloadCsv(filename, rows) {
@@ -114,7 +126,7 @@ function StatusPill({ status, t }) {
 }
 
 export default function VisitorHistoryPage() {
-  const { state, fetchVisitorHistory, currentUser } = useSinarms();
+  const { state, fetchVisitorHistory, currentUser, activeAlerts } = useSinarms();
   const { t } = useLanguage();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -218,6 +230,19 @@ export default function VisitorHistoryPage() {
       : 0;
     return { total, active, exited, avg };
   }, [filtered]);
+
+  // Visitors with a standing GPS_LOST escalation — the app stopped reporting
+  // position (GPS likely off), so staff should verify and check them out by
+  // hand. Shown as an inline badge next to the affected visitor's name.
+  const gpsLostVisitorIds = useMemo(
+    () =>
+      new Set(
+        (activeAlerts || [])
+          .filter((alert) => alert.type === 'GPS_LOST')
+          .map((alert) => alert.visitorId),
+      ),
+    [activeAlerts],
+  );
 
   const handleExport = () => {
     const rows = filtered.map((visitor) => ({
@@ -378,9 +403,19 @@ export default function VisitorHistoryPage() {
                           {(visitor.name || '?').charAt(0).toUpperCase()}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-bold text-slate-900 dark:text-white truncate">
-                            {visitor.name || t('staff.history.unknownVisitor')}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-slate-900 dark:text-white truncate">
+                              {visitor.name || t('staff.history.unknownVisitor')}
+                            </p>
+                            {gpsLostVisitorIds.has(visitor.id) && (
+                              <span
+                                title={t('staff.gpsLost.hint')}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30 flex-shrink-0"
+                              >
+                                <WifiOff size={11} /> {t('staff.gpsLost.badge')}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
                             {visitor.phone || visitor.email || visitor.id}
                           </p>
@@ -400,7 +435,13 @@ export default function VisitorHistoryPage() {
                       {visitor.checkoutTime ? formatDateTime(visitor.checkoutTime) : '—'}
                     </td>
                     <td className="px-5 py-3.5 text-right tabular-nums font-semibold text-slate-700 dark:text-slate-200">
-                      {visitor.durationMin ? `${visitor.durationMin}m` : '—'}
+                      {(() => {
+                        const mins = visitorDurationMin(visitor);
+                        if (mins == null) return '—';
+                        return visitor.status === 'active'
+                          ? t('staff.history.durationOngoing', { n: mins })
+                          : `${mins}m`;
+                      })()}
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <StatusPill status={visitor.status} t={t} />
@@ -444,6 +485,14 @@ export default function VisitorHistoryPage() {
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <StatusPill status={selected.status} t={t} />
+                      {gpsLostVisitorIds.has(selected.id) && (
+                        <span
+                          title={t('staff.gpsLost.hint')}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-500/30"
+                        >
+                          <WifiOff size={11} /> {t('staff.gpsLost.badge')}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -473,7 +522,13 @@ export default function VisitorHistoryPage() {
                 <DetailRow
                   icon={<Clock size={15} />}
                   label={t('staff.history.detail.duration')}
-                  value={selected.durationMin ? t('staff.history.detail.minutes', { n: selected.durationMin }) : '—'}
+                  value={(() => {
+                    const mins = visitorDurationMin(selected);
+                    if (mins == null) return '—';
+                    return selected.status === 'active'
+                      ? t('staff.history.detail.minutesOngoing', { n: mins })
+                      : t('staff.history.detail.minutes', { n: mins });
+                  })()}
                 />
                 {selected.purpose && (
                   <div className="pt-2">
