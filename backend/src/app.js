@@ -38,6 +38,7 @@ function createApp() {
     const state = await getState();
     res.json({
       status: 'ok',
+      deployMarker: 'pipeline-test-1',
       organizations: state.organizations.length,
       users: state.users.length,
       visitors: state.visitors.length,

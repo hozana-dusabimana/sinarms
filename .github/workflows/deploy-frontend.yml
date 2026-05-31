@@ -26,8 +26,10 @@ jobs:
           script: |
             set -e
             cd ~/sinarms
-            git fetch origin main
-            git reset --hard origin/main
+            # --force + FETCH_HEAD: survive a locked/corrupted origin/* ref
+            # (CloudPanel box has hit this) instead of failing the deploy.
+            git fetch --prune --force origin main || { git remote prune origin || true; git fetch --force origin main; }
+            git reset --hard FETCH_HEAD
             docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build frontend
             docker image prune -f
       - name: Health check
