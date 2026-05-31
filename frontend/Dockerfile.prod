@@ -19,6 +19,9 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
     VITE_WS_URL=$VITE_WS_URL
 
 COPY . .
+# Cap V8 heap so the Vite build fits on the RAM-constrained shared host (it
+# OOM-kills with the default heuristic there). 1024MB is backed partly by swap.
+ENV NODE_OPTIONS=--max-old-space-size=1024
 RUN npm run build
 
 FROM nginx:1.27-alpine
