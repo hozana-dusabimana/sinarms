@@ -88,13 +88,23 @@ describeIf('Socket.IO events', () => {
   const loc = bootstrap.data?.state?.locations?.[0];
   expect(org && loc).toBeTruthy();
 
+  // Pass an explicit destinationNodeId (as the real client does when it already
+  // knows the target). Relying only on destinationText makes check-in depend on
+  // the offline fallback classifier returning `resolved` for "HR office" — it
+  // may return `confirm`, in which case registerVisitor creates no visitor and
+  // emits nothing, so the event never arrives. An office node is deterministic.
+  const map = bootstrap.data?.state?.maps?.[loc.id];
+  const office = map?.nodes?.find((node) => node.type === 'office') || map?.nodes?.[1];
+  expect(office?.id).toBeTruthy();
+
   const checkinPromise = onceWithTimeout(socket, 'visitor:checkin', 4000);
   const checkin = await jsonRequest('/api/visitors/checkin', {
     method: 'POST',
     body: {
       name: 'Test Visitor',
       idOrPhone: '0700000000',
-      destinationText: 'HR office',
+      destinationText: office.label,
+      destinationNodeId: office.id,
       language: 'en',
       organizationId: org.id,
       locationId: loc.id,
