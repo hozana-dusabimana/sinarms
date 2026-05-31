@@ -48,8 +48,15 @@ async function startServer() {
   // BIND_HOST=127.0.0.1 in production so a host-networked container is only
   // reachable via the local reverse proxy, never directly from the internet.
   const host = process.env.BIND_HOST || '0.0.0.0';
-  server.listen(port, host, () => {
-    console.log(`SINARMS backend listening on http://${host}:${port}`);
+  // Resolve only once the socket is actually listening, so callers can read
+  // server.address() (e.g. the random port chosen by PORT=0 in tests) safely.
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => {
+      server.removeListener('error', reject);
+      console.log(`SINARMS backend listening on http://${host}:${port}`);
+      resolve();
+    });
   });
 
   setInterval(runAlertRefresh, ALERT_REFRESH_INTERVAL_MS).unref();
