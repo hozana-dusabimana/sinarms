@@ -67,8 +67,26 @@ async function withTransaction(work) {
   }
 }
 
+// Close the shared pool and reset the cached promise. Used by the Jest global
+// teardown so the process can exit cleanly (mysql2 pools hold keepalive sockets
+// that otherwise keep the event loop alive). Safe to call when no pool exists.
+async function closePool() {
+  if (!poolPromise) {
+    return;
+  }
+  const pending = poolPromise;
+  poolPromise = null;
+  try {
+    const pool = await pending;
+    await pool.end();
+  } catch (_err) {
+    // Pool failed to initialize (e.g. DB unreachable) — nothing to close.
+  }
+}
+
 module.exports = {
   getPool,
   query,
   withTransaction,
+  closePool,
 };
