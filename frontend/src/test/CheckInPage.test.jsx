@@ -154,7 +154,11 @@ describe('CheckInPage', () => {
       }),
     );
     await waitFor(() => {
-      expect(navigateMock).toHaveBeenCalledWith('/visit/navigate', { state: { visitorId: 'visitor-1' } });
+      // The check-in GPS fix is handed to the map via route state so it can seed
+      // the live marker; the GPS-denied path here sends null.
+      expect(navigateMock).toHaveBeenCalledWith('/visit/navigate', {
+        state: { visitorId: 'visitor-1', gps: null },
+      });
     });
   });
 
