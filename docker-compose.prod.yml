@@ -2,40 +2,48 @@
 #
 #   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
 #
-# Topology on the shared CloudPanel host:
-#   backend  127.0.0.1:4000  (host network — reuses host MySQL on 127.0.0.1)
-#   ai       127.0.0.1:8001  (host network — talks to backend on 127.0.0.1:4000)
-#   frontend 127.0.0.1:5173  (bridge, static nginx; built with absolute API URLs)
+# Topology on the shared CloudPanel host (AIRA is co-hosted — do NOT collide):
+#   backend  127.0.0.1:4000  host network — reuses host MySQL on 127.0.0.1:3306
+#   ai       127.0.0.1:8002  host network — talks to backend on 127.0.0.1:4000
+#   frontend 127.0.0.1:5174  bridge w/ port map — static nginx, absolute API URLs
 #
-# Each public domain is a CloudPanel reverse-proxy site pointing at the matching
-# 127.0.0.1 port. No db/redis containers — the host's MySQL is reused.
+# PORT CHOICES (checked against what was already bound on this box):
+#   - 5173 is AIRA's dashboard, 8000/8001 are CloudPanel itself — all avoided.
+#   - so frontend uses 5174 and ai uses 8002.
+# backend/ai use host networking because on this box the docker bridge gateway
+# cannot reach the host MySQL (firewall-refused); host net + 127.0.0.1 is the
+# proven path (AIRA uses it). The frontend MUST stay on a bridge with an
+# explicit port map — host networking would bind container nginx to host :80 and
+# collide with the CloudPanel nginx. Public ingress is only the reverse-proxy
+# sites. No db/redis containers — the host's MySQL is reused.
 services:
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    # Host network so the container can reach host MySQL bound to 127.0.0.1.
     network_mode: host
     env_file:
       - .env.prod
     environment:
       NODE_ENV: production
-      # Bind to localhost only; the CloudPanel reverse proxy is the only ingress.
-      BIND_HOST: 127.0.0.1
       PORT: "4000"
+      # Bind to loopback only; the CloudPanel reverse proxy is the only ingress.
+      BIND_HOST: 127.0.0.1
+      DB_HOST: 127.0.0.1
+      AI_ENGINE_URL: http://127.0.0.1:8002
     restart: unless-stopped
 
   ai:
     build:
       context: ./ai
       dockerfile: Dockerfile.prod
-    # Host network so it can reach the backend on 127.0.0.1:4000 and bind 8001.
     network_mode: host
     env_file:
       - .env.prod
     environment:
+      # Bind loopback only; reverse proxy fronts it.
       AI_HOST: 127.0.0.1
-      AI_PORT: "8001"
+      AI_PORT: "8002"
       SINARMS_BACKEND_URL: http://127.0.0.1:4000
     depends_on:
       - backend
@@ -49,7 +57,8 @@ services:
         # Baked into the static bundle at build time (absolute prod URLs).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL}
         VITE_WS_URL: ${VITE_WS_URL}
-    # Static files only — bound to localhost; CloudPanel reverse proxy fronts it.
+    # Bridge + explicit host-loopback port map (NOT host net — would grab :80).
+    network_mode: bridge
     ports:
-      - "127.0.0.1:5173:80"
+      - "127.0.0.1:5174:80"
     restart: unless-stopped

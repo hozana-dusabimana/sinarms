@@ -72,5 +72,6 @@ jobs:
         run: |
           pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
           pip install -r requirements.txt
+          pip install pytest
       - name: Run tests (offline fallback paths)
         run: python -m pytest -q
