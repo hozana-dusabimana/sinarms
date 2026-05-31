@@ -165,7 +165,15 @@ export default function MapNavigationPage() {
   const { state, currentVisitor, setCurrentVisitor, moveVisitor, checkoutVisitor, isReady } = useSinarms();
   const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [livePosition, setLivePosition] = useState(null);
+  // Seed from the GPS fix the check-in page already obtained (handed over via
+  // route state). The map then opens centred on the visitor immediately and the
+  // "enable location" overlay never flashes while the page's own watch warms up
+  // — which on laptops (no GPS chip) can take a while or fail outright even
+  // though location clearly worked moments earlier at check-in.
+  const [livePosition, setLivePosition] = useState(() => {
+    const handoff = routerLocation.state?.gps;
+    return isValidLatLng(handoff) ? handoff : null;
+  });
   const [locationError, setLocationError] = useState(null);
   const [locationRetryToken, setLocationRetryToken] = useState(0);
   const [isChatOpen, setIsChatOpen] = useState(false);
