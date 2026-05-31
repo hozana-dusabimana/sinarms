@@ -27,6 +27,41 @@ export function distanceMeters(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
+// Initial bearing (degrees, 0 = north, clockwise) from point a to point b.
+// Used to orient the "you are here" arrow in the direction the visitor is
+// actually walking, the way Google Maps rotates its blue cone.
+export function bearingBetween(a, b) {
+  if (!isValidLatLng(a) || !isValidLatLng(b)) return null;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const y = Math.sin(dLng) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+// Accuracy-weighted low-pass filter for the live marker. A precise fix (small
+// accuracy radius) is trusted and moves the marker most of the way; a coarse
+// fix (large radius — typically Wi-Fi/cell triangulation) barely nudges it, so
+// the marker stays put instead of scattering while the visitor stands still.
+// When the step is large relative to the fix's own uncertainty we treat it as
+// genuine travel and let the marker catch up quickly, so real movement isn't
+// over-damped into a lag. `goodAccuracyM` is the radius (~12 m) at which a fix
+// is considered fully trustworthy.
+export function blendPosition(prev, next, accuracyM, goodAccuracyM = 12) {
+  if (!isValidLatLng(next)) return isValidLatLng(prev) ? prev : null;
+  if (!isValidLatLng(prev)) return next;
+  const acc = typeof accuracyM === 'number' && accuracyM > 0 ? accuracyM : goodAccuracyM;
+  let alpha = goodAccuracyM / (goodAccuracyM + acc);
+  const step = distanceMeters(prev, next);
+  // Genuine travel (moved further than our uncertainty) — let the marker catch up.
+  if (step > Math.max(acc, 15)) alpha = Math.max(alpha, 0.6);
+  alpha = Math.min(0.95, Math.max(0.12, alpha));
+  return [prev[0] + (next[0] - prev[0]) * alpha, prev[1] + (next[1] - prev[1]) * alpha];
+}
+
 // Project a [lat, lng] point onto a polyline and return the closest point,
 // the index of the segment it falls on, and how far away it is. At the small
 // scales we care about (a campus, a few hundred metres), local-plane geometry

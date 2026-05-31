@@ -7,15 +7,20 @@ import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { getLocationMap, getLocationById, getNode } from '../../lib/sinarmsEngine';
 import { CHECKOUT_RADIUS_M, CHECKOUT_DEBOUNCE_MS, clipPolylineFromPosition, nearestPointOnPolyline } from '../../lib/geo';
+import { useGeolocation } from '../../lib/useGeolocation';
 
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, Rectangle, ImageOverlay, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
-// Reject GPS fixes coarser than this (metres). Phones fall back to Wi-Fi /
-// cell-tower triangulation when GPS is weak, which can be hundreds of metres
-// off and jump the marker to places the visitor never went. 75 m keeps real
-// GPS/Wi-Fi fixes while discarding the wild ones, on a campus only ~350 m wide.
-const MAX_GPS_ACCURACY_M = 75;
+// Accuracy (metres) at or below which we treat the fix as GPS-grade and stop
+// nagging about a weak signal. Above it we still SHOW the position (smoothed
+// + map-matched) but flag it as approximate, rather than freezing the marker.
+const GOOD_ACCURACY_M = 35;
+
+// On-site, snap the displayed marker onto the route line when it's within this
+// many metres of it (plus the fix's own uncertainty). This is the map-matching
+// that makes the dot ride the path like Google Maps instead of drifting off it.
+const SNAP_TO_ROUTE_M = 18;
 
 // Last accepted GPS fix, kept per-tab so a page refresh resumes with the marker
 // already placed instead of flashing the "acquiring location" state.
@@ -47,6 +52,25 @@ const activePersonIcon = L.divIcon({
   iconSize: [24, 24],
   iconAnchor: [12, 12]
 });
+
+// Heading-aware "you are here" marker: a directional cone, rotated to the way
+// the visitor is travelling, around the blue dot — the same affordance Google
+// Maps uses so the visitor can tell which way they're facing on the route.
+function makeHeadingIcon(heading) {
+  const deg = Number.isFinite(heading) ? heading : 0;
+  return L.divIcon({
+    className: 'bg-transparent',
+    html: `<div class="relative flex items-center justify-center" style="width:28px;height:28px;">
+             <div class="absolute w-full h-full bg-blue-500 rounded-full animate-ping opacity-60"></div>
+             <div class="absolute" style="transform: rotate(${deg}deg);">
+               <svg width="28" height="28" viewBox="0 0 28 28"><path d="M14 1 L21 17 L14 13 L7 17 Z" fill="#2563eb" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+             </div>
+             <div class="relative bg-blue-600 border-2 border-white rounded-full shadow" style="width:12px;height:12px;"></div>
+           </div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
 
 // Fits the map view to the route + visitor + destination — but only when the
 // route itself changes (or GPS first becomes available). Without a stable
@@ -175,32 +199,49 @@ export default function MapNavigationPage() {
   const { state, currentVisitor, setCurrentVisitor, moveVisitor, checkoutVisitor, isReady } = useSinarms();
   const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Real-time GPS, smoothed + heading-aware, from the shared hook. `livePosition`
+  // is the filtered marker position; `geoRawPosition` is the unfiltered fix used
+  // for geofence distance checks that must not be damped.
+  const {
+    position: geoPosition,
+    rawPosition: geoRawPosition,
+    accuracy: gpsAccuracy,
+    heading: gpsHeading,
+    status: gpsStatus,
+    error: geoError,
+    retry: retryGeolocation,
+  } = useGeolocation();
+
   // Seed from the GPS fix the check-in page already obtained (handed over via
-  // route state). The map then opens centred on the visitor immediately and the
-  // "enable location" overlay never flashes while the page's own watch warms up
-  // — which on laptops (no GPS chip) can take a while or fail outright even
-  // though location clearly worked moments earlier at check-in.
-  const [livePosition, setLivePosition] = useState(() => {
+  // route state), or this tab's last saved fix on a refresh. The map then opens
+  // centred on the visitor immediately and the "enable location" overlay never
+  // flashes while the hook's own watch warms up — which on laptops (no GPS chip)
+  // can take a while or fail outright even though location clearly worked
+  // moments earlier at check-in.
+  const handoffPosition = useMemo(() => {
     const handoff = routerLocation.state?.gps;
     if (isValidLatLng(handoff)) return handoff;
-    // Refresh path: route state is gone, so fall back to this tab's last fix.
     try {
       const saved = JSON.parse(window.sessionStorage.getItem(LAST_GPS_KEY) || 'null');
       return isValidLatLng(saved) ? saved : null;
     } catch {
       return null;
     }
-  });
-  const [locationError, setLocationError] = useState(null);
-  const [locationRetryToken, setLocationRetryToken] = useState(0);
+  }, [routerLocation.state]);
+
+  // Use the live fix once we have one; until then fall back to the seed.
+  const livePosition = geoPosition || handoffPosition;
+  // Only surface the "enable location" error state while we have nothing to show.
+  const locationError = geoPosition ? null : geoError;
+  // A coarse-but-usable fix: keep navigating, but tell the visitor it's approximate.
+  const isWeakSignal = gpsStatus === 'tracking' && typeof gpsAccuracy === 'number' && gpsAccuracy > GOOD_ACCURACY_M;
+
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isAlertsOpen, setIsAlertsOpen] = useState(false);
   const [activeRail, setActiveRail] = useState('map');
   const [arrivalToast, setArrivalToast] = useState(null);
   const [approachRoute, setApproachRoute] = useState(null); // real-road [[lat,lng],…] to the gate
   const [approachInfo, setApproachInfo] = useState(null); // { distanceM, durationMin }
-  const watchIdRef = useRef(null);
-  const pollIdRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
   const arrivalAnnouncedRef = useRef(null);
@@ -226,76 +267,16 @@ export default function MapNavigationPage() {
     }
   }, [currentVisitor?.id, routerLocation.state, setCurrentVisitor]);
 
-  // Live GPS tracking of the visitor's actual position. The marker on the map
-  // follows the visitor in real time as they move. If the browser blocks or
-  // can't acquire a fix, we surface a prompt so the visitor can enable
-  // location services — navigation cannot start without a real origin.
+  // Persist the latest raw fix per-tab so a refresh resumes with the marker
+  // already placed instead of flashing the "acquiring location" state.
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocationError('unsupported');
-      return undefined;
+    if (!isValidLatLng(geoRawPosition)) return;
+    try {
+      window.sessionStorage.setItem(LAST_GPS_KEY, JSON.stringify(geoRawPosition));
+    } catch {
+      /* ignore */
     }
-
-    const applyFix = (pos) => {
-      // Drop wildly imprecise fixes. Phones fall back to Wi-Fi / cell-tower
-      // triangulation when GPS is weak (e.g. indoors), which can report a
-      // position hundreds of metres off and jump the marker to a place the
-      // visitor never went. A campus-scale walk only needs GPS-grade accuracy,
-      // so ignore anything coarser than MAX_GPS_ACCURACY_M and keep the last
-      // good position instead. (Some browsers omit accuracy — accept those.)
-      const acc = pos?.coords?.accuracy;
-      if (typeof acc === 'number' && acc > MAX_GPS_ACCURACY_M) {
-        return;
-      }
-      const next = [pos.coords.latitude, pos.coords.longitude];
-      // Remember the latest good fix so a refresh can seed from it.
-      try {
-        window.sessionStorage.setItem(LAST_GPS_KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
-      // Ignore sub-2 m jitter so the marker (and the GPS-dependent route/snap
-      // effects) only update on real movement, not on every poll tick.
-      setLivePosition((prev) =>
-        prev && isValidLatLng(prev) && distanceMeters(prev, next) < 2 ? prev : next,
-      );
-      setLocationError((prev) => (prev ? null : prev));
-    };
-    const onError = (err) => {
-      if (err?.code === 1) setLocationError('denied');
-      else if (err?.code === 2) setLocationError('unavailable');
-      else if (err?.code === 3) setLocationError('timeout');
-      else setLocationError('unavailable');
-    };
-
-    // watchPosition is the real-time API, but on several Android/Chrome builds
-    // it emits the first fix and then goes quiet, freezing the "You are here"
-    // marker even as the visitor walks. A getCurrentPosition poll with
-    // maximumAge:0 (always a fresh fix) is the fallback that keeps the marker
-    // following them — the same staleness the FacilityMapEditor path-recorder
-    // works around. maximumAge:0 on the watch (was 2000) also stops it serving
-    // a stale cached position.
-    const wId = navigator.geolocation.watchPosition(applyFix, onError, {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 15000,
-    });
-    watchIdRef.current = wId;
-
-    const pId = setInterval(() => {
-      navigator.geolocation.getCurrentPosition(applyFix, () => {}, {
-        enableHighAccuracy: true,
-        maximumAge: 0,
-        timeout: 10000,
-      });
-    }, 3000);
-    pollIdRef.current = pId;
-
-    return () => {
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-      if (pollIdRef.current != null) clearInterval(pollIdRef.current);
-    };
-  }, [locationRetryToken]);
+  }, [geoRawPosition]);
 
   // Approach leg, drawn IN-APP (no external Google jump). While the visitor is
   // still far from the gate, our node graph has no road geometry to get there,
@@ -681,6 +662,25 @@ export default function MapNavigationPage() {
   const approachDistanceLabel = approachInfo?.distanceM != null
     ? fmtMeters(approachInfo.distanceM)
     : farDistanceLabel;
+
+  // Map-matching: snap the displayed marker onto the active route line when it
+  // is close to it, so the "you are here" dot rides the path like Google Maps
+  // instead of scattering into buildings on a noisy fix. We snap for DISPLAY
+  // only — geofence and step-advance logic keep using the real position so a
+  // snap can never falsely advance or check the visitor out. The tolerance
+  // grows with the fix's own uncertainty.
+  const displayPosition = (() => {
+    if (!isValidLatLng(livePosition)) return visitorPosition;
+    const line = isFarFromSite ? approachRoute : fullRoutePositions;
+    if (!line || line.length < 2) return livePosition;
+    const tol = SNAP_TO_ROUTE_M + Math.min(40, typeof gpsAccuracy === 'number' ? gpsAccuracy : 0);
+    const near = nearestPointOnPolyline(line, livePosition);
+    return near && near.distance <= tol ? near.point : livePosition;
+  })();
+
+  // Heading-aware marker when we know the travel direction, else the plain pulse.
+  const visitorIcon = gpsHeading == null ? activePersonIcon : makeHeadingIcon(gpsHeading);
+  const accuracyLabel = typeof gpsAccuracy === 'number' ? `±${Math.round(gpsAccuracy)} m` : null;
   // Deep link into Google Maps directions, starting turn-by-turn navigation
   // (dir_action=navigate). Destination is the gate so the on-site route can
   // take over on arrival. Origin is the live GPS when we have it; otherwise
@@ -941,11 +941,14 @@ export default function MapNavigationPage() {
             );
           })}
 
-          {/* Live Visitor Position */}
-          {isValidLatLng(visitorPosition) && (
-            <Marker position={visitorPosition} icon={activePersonIcon}>
+          {/* Live Visitor Position — map-matched onto the route, heading-aware */}
+          {isValidLatLng(displayPosition) && (
+            <Marker position={displayPosition} icon={visitorIcon}>
               <Popup>
                 <div className="text-center font-bold">{t('visitor.nav.youAreHere')}</div>
+                {accuracyLabel && (
+                  <div className="text-center text-[11px] text-slate-500 mt-0.5">{t('visitor.nav.accuracy', { meters: Math.round(gpsAccuracy) })}</div>
+                )}
               </Popup>
             </Marker>
           )}
@@ -1016,7 +1019,7 @@ export default function MapNavigationPage() {
               </p>
               <button
                 type="button"
-                onClick={() => setLocationRetryToken((v) => v + 1)}
+                onClick={retryGeolocation}
                 className="mt-4 inline-flex items-center gap-2 text-xs font-bold bg-[var(--color-brand-terracotta)] dark:bg-red-500 text-white px-4 py-2.5 rounded-xl shadow-sm hover:scale-105 transition-transform"
               >
                 <LocateFixed size={14} /> {t('visitor.nav.locationRequired.enable')}
@@ -1031,6 +1034,18 @@ export default function MapNavigationPage() {
             <Loader2 size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400 animate-spin" />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">
               {t('visitor.nav.acquiringLocation')}
+            </span>
+          </div>
+        )}
+
+        {/* Weak-signal badge — we keep navigating with a coarse fix (smoothed +
+            map-matched) rather than freezing the marker, and tell the visitor
+            the position is approximate so they don't over-trust it. */}
+        {livePosition && isWeakSignal && (
+          <div className="absolute top-4 left-4 z-[660] flex items-center gap-2 px-3 py-2 rounded-full bg-amber-50/95 dark:bg-amber-500/15 backdrop-blur-md border border-amber-200 dark:border-amber-500/40 shadow-lg">
+            <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400" />
+            <span className="text-xs font-bold text-amber-800 dark:text-amber-300">
+              {t('visitor.nav.weakSignal')}{accuracyLabel ? ` (${accuracyLabel})` : ''}
             </span>
           </div>
         )}
