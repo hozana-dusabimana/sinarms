@@ -81,6 +81,10 @@ export default function CheckInPage() {
   const qrAttemptRef = useRef(false);
   const [gpsCoords, setGpsCoords] = useState(null); // [lat, lng]
   const [gpsState, setGpsState] = useState('pending'); // 'pending' | 'granted' | 'denied' | 'unavailable'
+  // Mirror of gpsCoords for the QR auto-checkin effect, which fires once and
+  // must read the freshest fix at navigate time without taking gpsCoords as a
+  // dependency (that would retrigger the effect as the GPS watch updates).
+  const gpsCoordsRef = useRef(null);
 
   useEffect(() => {
     if (!('geolocation' in navigator)) {
@@ -89,7 +93,9 @@ export default function CheckInPage() {
     }
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        setGpsCoords([pos.coords.latitude, pos.coords.longitude]);
+        const coords = [pos.coords.latitude, pos.coords.longitude];
+        gpsCoordsRef.current = coords;
+        setGpsCoords(coords);
         setGpsState('granted');
       },
       (err) => {
@@ -187,7 +193,13 @@ export default function CheckInPage() {
         next.delete('qr');
         next.delete('location');
         setSearchParams(next, { replace: true });
-        navigate('/visit/navigate', { state: { visitorId: visitor.id }, replace: true });
+        navigate('/visit/navigate', {
+          state: {
+            visitorId: visitor.id,
+            gps: isValidLatLng(gpsCoordsRef.current) ? gpsCoordsRef.current : null,
+          },
+          replace: true,
+        });
       })
       .catch(() => {
         setQrStatus({ kind: 'error' });
@@ -289,7 +301,9 @@ export default function CheckInPage() {
         gpsLng: isValidLatLng(gpsCoords) ? gpsCoords[1] : null,
       });
 
-      navigate('/visit/navigate', { state: { visitorId: visitor.id } });
+      navigate('/visit/navigate', {
+        state: { visitorId: visitor.id, gps: isValidLatLng(gpsCoords) ? gpsCoords : null },
+      });
     } catch (err) {
       window.alert(err?.message || t('visitor.checkin.unable'));
     } finally {
