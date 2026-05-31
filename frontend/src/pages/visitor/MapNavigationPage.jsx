@@ -175,6 +175,7 @@ export default function MapNavigationPage() {
   const [approachRoute, setApproachRoute] = useState(null); // real-road [[lat,lng],…] to the gate
   const [approachInfo, setApproachInfo] = useState(null); // { distanceM, durationMin }
   const watchIdRef = useRef(null);
+  const pollIdRef = useRef(null);
   const lastAdvancedNodeRef = useRef(null);
   const advanceInFlightRef = useRef(false);
   const arrivalAnnouncedRef = useRef(null);
@@ -209,23 +210,49 @@ export default function MapNavigationPage() {
       setLocationError('unsupported');
       return undefined;
     }
-    setLocationError(null);
-    const wId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setLivePosition([pos.coords.latitude, pos.coords.longitude]);
-        setLocationError(null);
-      },
-      (err) => {
-        if (err?.code === 1) setLocationError('denied');
-        else if (err?.code === 2) setLocationError('unavailable');
-        else if (err?.code === 3) setLocationError('timeout');
-        else setLocationError('unavailable');
-      },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 15000 }
-    );
+
+    const applyFix = (pos) => {
+      const next = [pos.coords.latitude, pos.coords.longitude];
+      // Ignore sub-2 m jitter so the marker (and the GPS-dependent route/snap
+      // effects) only update on real movement, not on every poll tick.
+      setLivePosition((prev) =>
+        prev && isValidLatLng(prev) && distanceMeters(prev, next) < 2 ? prev : next,
+      );
+      setLocationError((prev) => (prev ? null : prev));
+    };
+    const onError = (err) => {
+      if (err?.code === 1) setLocationError('denied');
+      else if (err?.code === 2) setLocationError('unavailable');
+      else if (err?.code === 3) setLocationError('timeout');
+      else setLocationError('unavailable');
+    };
+
+    // watchPosition is the real-time API, but on several Android/Chrome builds
+    // it emits the first fix and then goes quiet, freezing the "You are here"
+    // marker even as the visitor walks. A getCurrentPosition poll with
+    // maximumAge:0 (always a fresh fix) is the fallback that keeps the marker
+    // following them — the same staleness the FacilityMapEditor path-recorder
+    // works around. maximumAge:0 on the watch (was 2000) also stops it serving
+    // a stale cached position.
+    const wId = navigator.geolocation.watchPosition(applyFix, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 15000,
+    });
     watchIdRef.current = wId;
+
+    const pId = setInterval(() => {
+      navigator.geolocation.getCurrentPosition(applyFix, () => {}, {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 10000,
+      });
+    }, 3000);
+    pollIdRef.current = pId;
+
     return () => {
       if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (pollIdRef.current != null) clearInterval(pollIdRef.current);
     };
   }, [locationRetryToken]);
 
