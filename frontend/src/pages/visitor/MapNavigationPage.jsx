@@ -495,6 +495,19 @@ export default function MapNavigationPage() {
     language,
   ]);
 
+  // Clip the OSRM line to the visitor's live position so the drawn polyline
+  // shortens with every GPS tick — without re-asking OSRM. Falls back to the
+  // raw line if the visitor is off-route (the route effect refetches from the
+  // new origin). MUST stay above the early returns below so this hook always
+  // runs in the same order on every render — otherwise refreshing /visit/navigate
+  // (no currentVisitor yet) skips it and React throws error #310.
+  const displayedApproachRoute = useMemo(() => {
+    if (!approachRoute || approachRoute.length < 2) return null;
+    if (!isValidLatLng(livePosition)) return approachRoute;
+    const clipped = clipPolylineFromPosition(approachRoute, livePosition, 30);
+    return clipped && clipped.length > 1 ? clipped : approachRoute;
+  }, [approachRoute, livePosition]);
+
   if (!isReady) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-80px)] text-slate-500 dark:text-slate-400 text-sm">
@@ -582,17 +595,6 @@ export default function MapNavigationPage() {
     }
     return segments;
   })();
-
-  // Clip the OSRM line to the visitor's live position so the drawn polyline
-  // shortens with every GPS tick — without re-asking OSRM. Falls back to the
-  // raw line if the visitor is off-route (the route effect above will then
-  // refetch from the new origin).
-  const displayedApproachRoute = useMemo(() => {
-    if (!approachRoute || approachRoute.length < 2) return null;
-    if (!isValidLatLng(livePosition)) return approachRoute;
-    const clipped = clipPolylineFromPosition(approachRoute, livePosition, 30);
-    return clipped && clipped.length > 1 ? clipped : approachRoute;
-  }, [approachRoute, livePosition]);
 
   // Fit bounds covers the visitor's live position, the upcoming route, and
   // the destination — so as the visitor moves, the view tracks the remaining
