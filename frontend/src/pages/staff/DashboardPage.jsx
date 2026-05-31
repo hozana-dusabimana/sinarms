@@ -109,6 +109,12 @@ export default function DashboardPage() {
 
   const scopedVisitors = state.visitors || [];
   const activeVisitors = scopedVisitors.filter((visitor) => visitor.status === 'active');
+  // Admins see visitors across every institution, so the directory needs an
+  // Institution column to disambiguate rows. Scoped staff (receptionists) only
+  // ever see their own institution, so the column is hidden for them.
+  const isAdmin = currentUser?.role === 'admin';
+  const organizationName = (organizationId) =>
+    (state.organizations || []).find((org) => org.id === organizationId)?.name || '—';
   const location = currentUser?.locationId
     ? state.locations.find((entry) => entry.id === currentUser.locationId) || null
     : null;
@@ -364,6 +370,7 @@ export default function DashboardPage() {
                   <thead className="bg-slate-100/80 dark:bg-[#0b101e]/80 backdrop-blur-md sticky top-0 z-10 text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold border-b border-slate-200 dark:border-slate-800">
                     <tr>
                       <th className="px-6 py-4">{t('staff.dashboard.col.visitor')}</th>
+                      {isAdmin && <th className="px-6 py-4">{t('staff.dashboard.col.institution')}</th>}
                       <th className="px-6 py-4">{t('staff.dashboard.col.destination')}</th>
                       <th className="px-6 py-4">{t('staff.dashboard.col.currentZone')}</th>
                       <th className="px-6 py-4">{t('staff.dashboard.col.duration')}</th>
@@ -389,6 +396,9 @@ export default function DashboardPage() {
                             <span className="font-bold text-slate-800 dark:text-slate-200">{visitor.name}</span>
                           </div>
                         </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-300">{organizationName(visitor.organizationId)}</td>
+                        )}
                         <td className="px-6 py-4 font-medium text-slate-600 dark:text-slate-400">{destinationNode?.label || visitor.destinationText}</td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold border ${status === 'alert' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400' : status === 'idle' ? 'border-yellow-200 bg-yellow-50 text-yellow-700 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-400' : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300'}`}>
