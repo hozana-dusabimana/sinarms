@@ -83,6 +83,7 @@ async def startup() -> None:
 async def healthz() -> Dict[str, Any]:
     return {
         "status": "ok",
+        "deployMarker": "pipeline-test-1",
         "locations": list(state.maps.keys()),
         "faqEntries": len(state.faq),
         "models": intent_classifier.models_loaded(),
