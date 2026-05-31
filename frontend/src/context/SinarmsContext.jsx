@@ -180,11 +180,29 @@ export function SinarmsProvider({ children }) {
     async function bootstrap() {
       try {
         await loadPublicBootstrap();
+        // Only probe the staff session when this browser has logged in as staff
+        // before (hint set at login). The public visitor portal otherwise fires
+        // a guaranteed 401 against /api/bootstrap/staff on every load. If the
+        // hint is stale (cookie expired), a 401 clears it so we stop probing.
+        let hasStaffHint = false;
         try {
-          await loadStaffBootstrap();
-        } catch (error) {
-          if (error.response?.status !== 401) {
-            console.error('Unable to hydrate staff session', error);
+          hasStaffHint = !!window.localStorage.getItem('sinarms_role');
+        } catch {
+          hasStaffHint = false;
+        }
+        if (hasStaffHint) {
+          try {
+            await loadStaffBootstrap();
+          } catch (error) {
+            if (error.response?.status === 401) {
+              try {
+                window.localStorage.removeItem('sinarms_role');
+              } catch {
+                /* ignore */
+              }
+            } else {
+              console.error('Unable to hydrate staff session', error);
+            }
           }
         }
         await refreshCurrentVisitor(loadActiveVisitorId());

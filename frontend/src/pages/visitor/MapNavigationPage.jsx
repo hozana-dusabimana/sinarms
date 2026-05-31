@@ -17,6 +17,10 @@ import L from 'leaflet';
 // GPS/Wi-Fi fixes while discarding the wild ones, on a campus only ~350 m wide.
 const MAX_GPS_ACCURACY_M = 75;
 
+// Last accepted GPS fix, kept per-tab so a page refresh resumes with the marker
+// already placed instead of flashing the "acquiring location" state.
+const LAST_GPS_KEY = 'sinarms-last-gps';
+
 // Leaflet default icon fix
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -178,7 +182,14 @@ export default function MapNavigationPage() {
   // though location clearly worked moments earlier at check-in.
   const [livePosition, setLivePosition] = useState(() => {
     const handoff = routerLocation.state?.gps;
-    return isValidLatLng(handoff) ? handoff : null;
+    if (isValidLatLng(handoff)) return handoff;
+    // Refresh path: route state is gone, so fall back to this tab's last fix.
+    try {
+      const saved = JSON.parse(window.sessionStorage.getItem(LAST_GPS_KEY) || 'null');
+      return isValidLatLng(saved) ? saved : null;
+    } catch {
+      return null;
+    }
   });
   const [locationError, setLocationError] = useState(null);
   const [locationRetryToken, setLocationRetryToken] = useState(0);
@@ -237,6 +248,12 @@ export default function MapNavigationPage() {
         return;
       }
       const next = [pos.coords.latitude, pos.coords.longitude];
+      // Remember the latest good fix so a refresh can seed from it.
+      try {
+        window.sessionStorage.setItem(LAST_GPS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
       // Ignore sub-2 m jitter so the marker (and the GPS-dependent route/snap
       // effects) only update on real movement, not on every poll tick.
       setLivePosition((prev) =>
