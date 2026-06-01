@@ -19,6 +19,7 @@ import {
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { CHECKIN_RADIUS_M, distanceMeters, isValidLatLng } from '../../lib/geo';
+import { useGeolocation } from '../../lib/useGeolocation';
 
 // Accepts letters (incl. accents), spaces, hyphens, apostrophes — covers Rwandan,
 // French and English visitor names. Min length 2 enforced separately.
@@ -79,33 +80,37 @@ export default function CheckInPage() {
   const [selectedDestination, setSelectedDestination] = useState('');
   const [qrStatus, setQrStatus] = useState(null);
   const qrAttemptRef = useRef(false);
-  const [gpsCoords, setGpsCoords] = useState(null); // [lat, lng]
-  const [gpsState, setGpsState] = useState('pending'); // 'pending' | 'granted' | 'denied' | 'unavailable'
-  // Mirror of gpsCoords for the QR auto-checkin effect, which fires once and
-  // must read the freshest fix at navigate time without taking gpsCoords as a
+  // Shared geolocation pipeline (smoothing + deadband + outlier rejection) —
+  // the same source the live map uses. `position` is the smoothed fix that
+  // drives the displayed distance so it doesn't jitter while the visitor stands
+  // still; `rawPosition` is the unfiltered fix we hand to the backend / map for
+  // the geofence, which must not be damped.
+  const { position: smoothedPosition, rawPosition: rawGpsPosition, error: gpsError } = useGeolocation();
+
+  // Distance shown to the visitor is computed from the smoothed position so it
+  // holds steady between fixes and across refreshes instead of tracking raw
+  // GPS noise (the old private watchPosition fed the raw fix straight in).
+  const gpsCoords = smoothedPosition;
+
+  // Coarse permission/availability state the banner copy keys on: once we have
+  // any fix we're 'granted'; otherwise reflect the hook's error, else 'pending'
+  // while the first fix is still being acquired.
+  const hasFix = isValidLatLng(smoothedPosition) || isValidLatLng(rawGpsPosition);
+  const gpsState = hasFix
+    ? 'granted'
+    : gpsError === 'denied'
+      ? 'denied'
+      : gpsError
+        ? 'unavailable'
+        : 'pending';
+
+  // Mirror of the raw fix for the QR auto-checkin effect, which fires once and
+  // must read the freshest fix at navigate time without taking it as a
   // dependency (that would retrigger the effect as the GPS watch updates).
   const gpsCoordsRef = useRef(null);
-
   useEffect(() => {
-    if (!('geolocation' in navigator)) {
-      setGpsState('unavailable');
-      return undefined;
-    }
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        const coords = [pos.coords.latitude, pos.coords.longitude];
-        gpsCoordsRef.current = coords;
-        setGpsCoords(coords);
-        setGpsState('granted');
-      },
-      (err) => {
-        if (err?.code === 1) setGpsState('denied');
-        else setGpsState('unavailable');
-      },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 },
-    );
-    return () => navigator.geolocation.clearWatch(watchId);
-  }, []);
+    if (isValidLatLng(rawGpsPosition)) gpsCoordsRef.current = rawGpsPosition;
+  }, [rawGpsPosition]);
 
   const entranceCoords = useMemo(() => {
     if (!selectedLocationId) return null;
@@ -249,6 +254,13 @@ export default function CheckInPage() {
 
     setIsProcessing(true);
 
+    // Send the raw (undamped) fix to the backend geofence and hand it to the
+    // map; the smoothed value is only for the on-screen distance. Fall back to
+    // the smoothed fix if a raw one isn't available yet.
+    const submitCoords = isValidLatLng(rawGpsPosition)
+      ? rawGpsPosition
+      : (isValidLatLng(gpsCoords) ? gpsCoords : null);
+
     const apiLanguage = language === 'fr' ? 'fr' : language === 'rw' ? 'rw' : 'en';
 
     if (!selectedOrganization || !selectedLocation) {
@@ -297,12 +309,12 @@ export default function CheckInPage() {
         locationId: selectedLocation.id,
         source: 'self',
         destinationNodeId,
-        gpsLat: isValidLatLng(gpsCoords) ? gpsCoords[0] : null,
-        gpsLng: isValidLatLng(gpsCoords) ? gpsCoords[1] : null,
+        gpsLat: isValidLatLng(submitCoords) ? submitCoords[0] : null,
+        gpsLng: isValidLatLng(submitCoords) ? submitCoords[1] : null,
       });
 
       navigate('/visit/navigate', {
-        state: { visitorId: visitor.id, gps: isValidLatLng(gpsCoords) ? gpsCoords : null },
+        state: { visitorId: visitor.id, gps: isValidLatLng(submitCoords) ? submitCoords : null },
       });
     } catch (err) {
       window.alert(err?.message || t('visitor.checkin.unable'));

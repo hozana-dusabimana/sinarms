@@ -17,6 +17,17 @@ const OUTLIER_ACCURACY_M = 40;
 // accuracy level (not just weak signal), which is what stops the dot — and the
 // route anchored to it — from varying while the visitor stands still.
 const MIN_HOLD_STEP_M = 6;
+// A single fix landing beyond the deadband is almost always a noise spike, not
+// travel — and the old code reacted to it immediately, blending the marker
+// toward the spike and re-pinning the hold anchor there. Standing still, fixes
+// scatter around the true point, so the anchor random-walked around the
+// accuracy cloud and the dot (and the route snapped to it) visibly drifted.
+// We now require this many CONSECUTIVE beyond-deadband fixes before accepting
+// the move, so a lone outlier can't shift the anchor.
+const MOVE_CONFIRM_FIXES = 2;
+// …unless the jump is this many times the deadband, i.e. unambiguous travel —
+// then we react on the first fix so a real departure never feels laggy.
+const CONFIRM_MOVE_FACTOR = 2.5;
 // Below this many metres of movement we don't recompute heading from two fixes
 // (the bearing of a 1 m jitter step is meaningless); we keep the previous one.
 const HEADING_MIN_STEP_M = 4;
@@ -45,6 +56,9 @@ export function useGeolocation({ enabled = true } = {}) {
   const rawRef = useRef(null);
   const lastTsRef = useRef(null);
   const headingRef = useRef(null);
+  // Consecutive fixes that have landed beyond the deadband — used to confirm
+  // real movement before releasing the stationary hold (see MOVE_CONFIRM_FIXES).
+  const moveStreakRef = useRef(0);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -76,11 +90,31 @@ export function useGeolocation({ enabled = true } = {}) {
       // Stationary hold: if the apparent move is within the GPS uncertainty
       // (accuracy radius, floored at MIN_HOLD_STEP_M) it's noise, not travel →
       // treat as standing still. Hold position AND heading so neither the marker
-      // nor the route (anchored to it) wander. Applies at every accuracy level;
-      // a real move beyond the radius still updates and tracks normally.
+      // nor the route (anchored to it) wander. Applies at every accuracy level.
+      //
+      // Crucially the hold is STICKY: a single fix beyond the deadband is
+      // treated as a noise spike and the anchor stays put — only after
+      // MOVE_CONFIRM_FIXES consecutive beyond-deadband fixes (or one jump large
+      // enough to be unambiguous travel) do we release and let the marker move.
+      // This stops the anchor random-walking around the accuracy cloud while
+      // the visitor stands still, which is what made the dot and route drift.
       const movedM = smoothedRef.current ? distanceMeters(smoothedRef.current, next) : Infinity;
       const deadbandM = Math.max(typeof acc === 'number' ? acc : 0, MIN_HOLD_STEP_M);
-      const holdStill = smoothedRef.current != null && movedM < deadbandM;
+      let holdStill;
+      if (smoothedRef.current == null) {
+        holdStill = false; // first fix — nothing to hold to yet
+      } else if (movedM < deadbandM) {
+        holdStill = true; // within the cloud — definitely noise
+        moveStreakRef.current = 0;
+      } else if (movedM >= deadbandM * CONFIRM_MOVE_FACTOR) {
+        holdStill = false; // unmistakable travel — react now
+        moveStreakRef.current = 0;
+      } else {
+        // Beyond the deadband but inside the spike band: confirm with a streak.
+        moveStreakRef.current += 1;
+        holdStill = moveStreakRef.current < MOVE_CONFIRM_FIXES;
+        if (!holdStill) moveStreakRef.current = 0;
+      }
 
       // Heading: trust the device compass when it's moving, else derive it from
       // the travel direction between two real fixes. Frozen while holding still.
