@@ -849,7 +849,12 @@ export function SinarmsProvider({ children }) {
     permissions,
     authResolved,
     isReady,
-    activeAlerts: state.alerts.filter((alert) => !alert.resolvedAt),
+    // Dismissing an alert acknowledges it (sets acknowledgedAt). The backend
+    // keeps acknowledged-but-unresolved alerts on record (and uses them to
+    // suppress re-raising the same rule), so the active panel must hide both
+    // resolved and acknowledged ones — otherwise the X button looks like it
+    // does nothing.
+    activeAlerts: state.alerts.filter((alert) => !alert.resolvedAt && !alert.acknowledgedAt),
     scopedVisitors: state.visitors,
     hasPermission,
     login,
