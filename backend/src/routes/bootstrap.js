@@ -49,7 +49,11 @@ router.get('/staff', requireAuth, async (req, res) => {
       users: isAdmin ? state.users.map(publicUser) : [],
       visitors: scopeVisitors(state, req.user, { includeHistory: isAdmin }),
       alerts: scopeAlerts(state, req.user),
-      faq: isAdmin || req.user.role === 'receptionist' ? state.faq : [],
+      faq: isAdmin
+        ? state.faq
+        : req.user.role === 'receptionist'
+          ? state.faq.filter((entry) => !entry.organizationId || entry.organizationId === req.user.organizationId)
+          : [],
       auditLog: isAdmin ? state.auditLog : [],
       notifications: scopeNotifications(state, req.user),
     },

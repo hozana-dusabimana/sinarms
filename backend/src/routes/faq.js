@@ -27,15 +27,27 @@ function pushFaqToAiEngine(faq) {
 
 router.get('/', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
+  // Receptionists only manage their own institution; they additionally see the
+  // global (organizationId === null) entries that apply to every institution.
+  if (req.user.role === 'receptionist') {
+    return res.json(
+      state.faq.filter((entry) => !entry.organizationId || entry.organizationId === req.user.organizationId),
+    );
+  }
   return res.json(state.faq);
 });
 
 router.post('/', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const faqId = createId('faq');
+  // A receptionist can only author FAQs for their own institution; an admin may
+  // target any institution or leave it global (null).
+  const organizationId = req.user.role === 'receptionist'
+    ? (req.user.organizationId || null)
+    : (req.body.organizationId || null);
   const nextState = await mutateState((draft) => {
     draft.faq.unshift({
       id: faqId,
-      organizationId: req.body.organizationId || null,
+      organizationId,
       language: req.body.language || 'en',
       question: req.body.question,
       answer: req.body.answer,
@@ -58,12 +70,24 @@ router.post('/', requireAuth, requireRole(['admin', 'receptionist']), async (req
 });
 
 router.put('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
+  const existing = (await getState()).faq.find((entry) => entry.id === req.params.id);
+  if (!existing) {
+    return res.status(404).json({ message: 'FAQ entry not found.' });
+  }
+  if (req.user.role === 'receptionist' && existing.organizationId !== req.user.organizationId) {
+    return res.status(403).json({ message: 'You can only manage FAQs for your institution.' });
+  }
+  const updates = pick(req.body, FAQ_UPDATABLE);
+  // Receptionists cannot move an entry to another institution or make it global.
+  if (req.user.role === 'receptionist') {
+    delete updates.organizationId;
+  }
   const nextState = await mutateState((draft) => {
     const faqEntry = draft.faq.find((entry) => entry.id === req.params.id);
     if (!faqEntry) {
       return draft;
     }
-    Object.assign(faqEntry, pick(req.body, FAQ_UPDATABLE));
+    Object.assign(faqEntry, updates);
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,
@@ -84,8 +108,12 @@ router.put('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (r
 
 router.delete('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
-  if (!state.faq.find((entry) => entry.id === req.params.id)) {
+  const entry = state.faq.find((item) => item.id === req.params.id);
+  if (!entry) {
     return res.status(404).json({ message: 'FAQ entry not found.' });
+  }
+  if (req.user.role === 'receptionist' && entry.organizationId !== req.user.organizationId) {
+    return res.status(403).json({ message: 'You can only manage FAQs for your institution.' });
   }
 
   const nextState = await mutateState((draft) => {

@@ -5,14 +5,22 @@ import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 
 export default function FaqManagement() {
-  const { state, createFaq, updateFaq, deleteFaq } = useSinarms();
+  const { state, currentUser, createFaq, updateFaq, deleteFaq } = useSinarms();
   const { t } = useLanguage();
-  const faqs = state.faq || [];
+  const isAdmin = currentUser?.role === 'admin';
+  const roleLabel = isAdmin ? t('staff.layout.administrator') : t('staff.layout.receptionist');
+  const myOrgId = currentUser?.organizationId || null;
   const organizations = (state.organizations || [])
     .slice()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const organizationName = (organizationId) =>
     organizations.find((org) => org.id === organizationId)?.name || organizationId;
+  // Admins manage every entry; a receptionist manages only their own
+  // institution's entries (global ones are shown read-only for context).
+  const faqs = isAdmin
+    ? (state.faq || [])
+    : (state.faq || []).filter((faq) => !faq.organizationId || faq.organizationId === myOrgId);
+  const canManage = (faq) => isAdmin || (!!faq.organizationId && faq.organizationId === myOrgId);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState(null);
 
@@ -27,7 +35,7 @@ export default function FaqManagement() {
             <h2 className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-3">
               {t('staff.faq.title')}
               <span className="bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 text-xs font-black px-3 py-1 rounded-full uppercase tracking-widest border border-red-200 dark:border-red-500/30">
-                {t('staff.adminOnly')}
+                {roleLabel}
               </span>
             </h2>
             <p className="text-slate-500 dark:text-slate-400 font-medium overflow-hidden whitespace-nowrap overflow-ellipsis max-w-[200px] sm:max-w-none">{t('staff.faq.subtitle')}</p>
@@ -89,8 +97,9 @@ export default function FaqManagement() {
                     <p className="text-2xl font-black text-slate-700 dark:text-slate-200">{faq.hitCount}</p>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('staff.faq.matches')}</p>
                   </div>
+                  {canManage(faq) && (
                   <div className="flex items-center gap-2 lg:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button 
+                    <button
                       onClick={() => { setEditingFaq(faq); setIsModalOpen(true); }}
                       className="p-2 text-slate-400 hover:text-[var(--color-brand-terracotta)] dark:hover:text-red-400 transition-colors bg-slate-50 dark:bg-slate-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
                     >
@@ -109,6 +118,7 @@ export default function FaqManagement() {
                       <Trash2 size={16} />
                     </button>
                   </div>
+                  )}
                 </div>
               </motion.div>
             ))}
@@ -141,13 +151,22 @@ export default function FaqManagement() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.filter.institution')}</label>
-                  <select id="faq-org" defaultValue={editingFaq?.organizationId || ''} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] font-bold">
-                    <option value="">{t('staff.filter.allInstitutions')}</option>
-                    {organizations.map((org) => (
-                      <option key={org.id} value={org.id}>{org.name}</option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">{t('staff.faq.modal.institutionHint')}</p>
+                  {isAdmin ? (
+                    <select id="faq-org" defaultValue={editingFaq?.organizationId || ''} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] font-bold">
+                      <option value="">{t('staff.filter.allInstitutions')}</option>
+                      {organizations.map((org) => (
+                        <option key={org.id} value={org.id}>{org.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <div className="w-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                        <Building2 size={14} /> {myOrgId ? organizationName(myOrgId) : '—'}
+                      </div>
+                      <input id="faq-org" type="hidden" defaultValue={myOrgId || ''} />
+                    </>
+                  )}
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">{isAdmin ? t('staff.faq.modal.institutionHint') : t('staff.faq.modal.institutionLocked')}</p>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.faq.modal.question')}</label>
