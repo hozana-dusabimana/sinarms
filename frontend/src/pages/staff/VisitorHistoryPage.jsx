@@ -231,9 +231,12 @@ export default function VisitorHistoryPage() {
     const total = filtered.length;
     const active = filtered.filter((v) => v.status === 'active').length;
     const exited = filtered.filter((v) => v.status === 'exited').length;
+    // Match the backend analytics definition: average time on site across both
+    // completed visits (recorded durationMin) and active ones (elapsed so far),
+    // so the card isn't stuck at 0 until visitors start checking out.
     const durations = filtered
-      .filter((v) => v.status === 'exited' && v.durationMin)
-      .map((v) => Number(v.durationMin));
+      .map((v) => visitorDurationMin(v))
+      .filter((m) => m != null);
     const avg = durations.length
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : 0;

@@ -154,11 +154,24 @@ function buildAnalytics(state, filters = {}) {
     return true;
   });
 
-  const completedVisitors = visitors.filter((visitor) => visitor.status === 'exited');
-  const averageDuration = Math.round(
-    completedVisitors.reduce((sum, visitor) => sum + Number(visitor.durationMin || 0), 0) /
-      (completedVisitors.length || 1),
-  );
+  // Average time on site across BOTH completed visits (their recorded
+  // durationMin) and still-active visits (elapsed minutes since check-in).
+  // Averaging exited visitors only left this stuck at 0 whenever nobody had
+  // checked out yet, even with a full house of active visitors.
+  const durations = visitors
+    .map((visitor) => {
+      if (visitor.status === 'exited') {
+        return Number(visitor.durationMin || 0);
+      }
+      if (visitor.status === 'active' && visitor.checkinTime) {
+        return minutesBetween(visitor.checkinTime);
+      }
+      return null;
+    })
+    .filter((minutes) => minutes != null);
+  const averageDuration = durations.length
+    ? Math.round(durations.reduce((sum, minutes) => sum + minutes, 0) / durations.length)
+    : 0;
 
   const destinationCounts = {};
   visitors.forEach((visitor) => {
