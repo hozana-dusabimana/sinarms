@@ -86,6 +86,10 @@ function buildRoutePositions(map, routeNodeIds) {
 
 function FitBounds({ positions }) {
   const map = useMap();
+  // Re-fit only when the set of coordinates actually changes, not on every
+  // render/poll — otherwise the 10s dashboard refresh would yank the map back
+  // and fight the user's manual pan/zoom.
+  const positionsKey = JSON.stringify(positions || []);
   useEffect(() => {
     const valid = (positions || []).filter(isValidLatLng);
     if (valid.length >= 2) {
@@ -93,7 +97,8 @@ function FitBounds({ positions }) {
     } else if (valid.length === 1) {
       map.setView(valid[0], 19);
     }
-  }, [map, positions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, positionsKey]);
   return null;
 }
 
@@ -154,13 +159,25 @@ export default function DashboardPage() {
   }
 
   // Collect all relevant positions for the current shift — used to centre/fit
-  // the map so it opens on the actual location and routes, not on a default.
+  // the map so it opens on the actual visitors and routes, not on a default.
+  // Admins have no assigned location (locationMap is null), so without the
+  // visitor positions below the map would open on a hardcoded default point
+  // kilometres away from everyone and look empty even with active visitors.
   const mapFitPositions = (() => {
-    if (!locationMap) return [];
     const positions = [];
-    (locationMap.nodes || []).forEach((node) => {
+    (locationMap?.nodes || []).forEach((node) => {
       const pos = getNodeLatLng(node);
       if (isValidLatLng(pos)) positions.push(pos);
+    });
+    visibleActiveVisitors.forEach((visitor) => {
+      const vmap = getLocationMap(state, visitor.locationId);
+      const current = visitorCurrentPosition(visitor);
+      if (isValidLatLng(current)) positions.push(current);
+      buildRoutePositions(vmap, visitor.routeNodeIds).forEach((pos) => {
+        if (isValidLatLng(pos)) positions.push(pos);
+      });
+      const destPos = getNodeLatLng(getNode(vmap, visitor.destinationNodeId));
+      if (isValidLatLng(destPos)) positions.push(destPos);
     });
     return positions;
   })();
