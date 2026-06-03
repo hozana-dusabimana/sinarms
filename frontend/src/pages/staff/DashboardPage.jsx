@@ -101,6 +101,7 @@ export default function DashboardPage() {
   const { state, analytics, currentUser, activeAlerts, acknowledgeAlert, checkoutVisitor, registerVisitor } = useSinarms();
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState('list');
+  const [institutionFilter, setInstitutionFilter] = useState('');
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualIdOrPhone, setManualIdOrPhone] = useState('');
@@ -119,6 +120,14 @@ export default function DashboardPage() {
   // Institution column to disambiguate rows. Scoped staff (receptionists) only
   // ever see their own institution, so the column is hidden for them.
   const isAdmin = currentUser?.role === 'admin';
+  // Admins can narrow the live directory/map to a single institution. Scoped
+  // staff only ever see their own institution, so the control is admin-only.
+  const organizationOptions = isAdmin
+    ? (state.organizations || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    : [];
+  const visibleActiveVisitors = institutionFilter
+    ? activeVisitors.filter((visitor) => visitor.organizationId === institutionFilter)
+    : activeVisitors;
   // A scoped staff member with no assigned location can't be tied to any
   // visitors, so every list/stat on this page is necessarily empty. Surface an
   // explicit banner instead of a silently blank dashboard that reads as "broken".
@@ -290,12 +299,27 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {activeTab === 'list' && (
-              <div className="relative w-48 sm:w-64">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input type="text" placeholder={t('staff.dashboard.searchPlaceholder')} className="w-full bg-slate-100 dark:bg-slate-800/80 border-none rounded-full pl-9 pr-4 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200" />
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {isAdmin && organizationOptions.length > 0 && (
+                <select
+                  value={institutionFilter}
+                  onChange={(e) => setInstitutionFilter(e.target.value)}
+                  title={t('staff.filter.institution')}
+                  className="bg-slate-100 dark:bg-slate-800/80 border-none rounded-full px-3 py-1.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200 max-w-[9rem] sm:max-w-[13rem]"
+                >
+                  <option value="">{t('staff.filter.allInstitutions')}</option>
+                  {organizationOptions.map((org) => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              )}
+              {activeTab === 'list' && (
+                <div className="relative w-48 sm:w-64">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder={t('staff.dashboard.searchPlaceholder')} className="w-full bg-slate-100 dark:bg-slate-800/80 border-none rounded-full pl-9 pr-4 py-1.5 text-sm outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200" />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 overflow-auto bg-slate-50/50 dark:bg-transparent relative custom-scrollbar">
@@ -337,7 +361,7 @@ export default function DashboardPage() {
                     })}
 
                   {/* Active visitor routes + their live dots + destination pins. */}
-                  {activeVisitors.map((visitor) => {
+                  {visibleActiveVisitors.map((visitor) => {
                     const vmap = getLocationMap(state, visitor.locationId);
                     const routePositions = buildRoutePositions(vmap, visitor.routeNodeIds);
                     const currentPos = visitorCurrentPosition(visitor);
@@ -398,7 +422,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                    {activeVisitors.map((visitor) => {
+                    {visibleActiveVisitors.map((visitor) => {
                       const map = getLocationMap(state, visitor.locationId);
                       const destinationNode = getNode(map, visitor.destinationNodeId);
                       const currentNode = getNode(map, visitor.currentNodeId);

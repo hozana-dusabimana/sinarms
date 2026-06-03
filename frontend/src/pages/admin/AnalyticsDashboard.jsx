@@ -15,10 +15,14 @@ function weekOfYear(date) {
 }
 
 export default function AnalyticsDashboard() {
-  const { analytics: bootstrapAnalytics, exportAnalytics } = useSinarms();
+  const { state, analytics: bootstrapAnalytics, exportAnalytics } = useSinarms();
   const [analytics, setAnalytics] = useState(bootstrapAnalytics);
   const [dateRange, setDateRange] = useState('Last 30 Days');
   const [granularity, setGranularity] = useState('D');
+  const [organizationId, setOrganizationId] = useState('');
+  const organizationOptions = (state?.organizations || [])
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   const arrivalsByDay = analytics.arrivalsByDay || [];
 
   const aggregateByGranularity = (days, granularityKey) => {
@@ -85,10 +89,6 @@ export default function AnalyticsDashboard() {
   }));
 
   useEffect(() => {
-    setAnalytics(bootstrapAnalytics);
-  }, [bootstrapAnalytics]);
-
-  useEffect(() => {
     const rangeToDays = {
       'Last 7 Days': 7,
       'Last 30 Days': 30,
@@ -100,21 +100,27 @@ export default function AnalyticsDashboard() {
 
     async function load() {
       try {
-        const response = await api.get('/api/analytics/summary', { params: { days } });
+        const response = await api.get('/api/analytics/summary', {
+          params: { days, organizationId: organizationId || undefined },
+        });
         if (!cancelled) {
           setAnalytics(response.data);
         }
-      } catch (_error) {
-        // Stay on bootstrap analytics if the request is unauthorized/unavailable.
+      } catch {
+        // Keep the last good data if the request is unauthorized/unavailable.
       }
     }
 
     load();
+    // Self-poll so the dashboard stays live without the global staff poll
+    // resetting the selected range/institution back to the unfiltered view.
+    const id = setInterval(load, 10000);
 
     return () => {
       cancelled = true;
+      clearInterval(id);
     };
-  }, [dateRange]);
+  }, [dateRange, organizationId]);
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -129,6 +135,21 @@ export default function AnalyticsDashboard() {
           <p className="text-slate-500 dark:text-slate-400 font-medium">Head Office - Kigali</p>
         </div>
         <div className="flex items-center gap-3">
+          {organizationOptions.length > 0 && (
+            <select
+              value={organizationId}
+              onChange={(e) => setOrganizationId(e.target.value)}
+              title="Institution"
+              className="bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-xl transition-all font-bold border border-slate-300 dark:border-slate-600 shadow-sm outline-none max-w-[10rem] sm:max-w-[15rem]"
+            >
+              <option value="">All institutions</option>
+              {organizationOptions.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => {
               const ranges = ['Last 7 Days', 'Last 30 Days', 'Last 90 Days'];
@@ -140,7 +161,7 @@ export default function AnalyticsDashboard() {
             <Calendar size={18} />
             <span className="hidden sm:inline">{dateRange}</span>
           </button>
-          <button onClick={() => exportAnalytics()} className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2">
+          <button onClick={() => exportAnalytics({ organizationId: organizationId || undefined })} className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2">
             <ArrowUpRight size={18} />
             <span className="hidden sm:inline">Export CSV</span>
           </button>

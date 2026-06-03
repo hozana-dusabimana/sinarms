@@ -134,7 +134,15 @@ export default function VisitorHistoryPage() {
   const [search, setSearch] = useState('');
   const [range, setRange] = useState('30d');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [orgFilter, setOrgFilter] = useState('all');
   const [selected, setSelected] = useState(null);
+
+  // Admins see visits across every institution, so they get a control to narrow
+  // the table to one. Scoped staff only ever see their own, so it's hidden.
+  const isAdmin = currentUser?.role === 'admin';
+  const organizationOptions = isAdmin
+    ? (state.organizations || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+    : [];
 
   const RANGE_OPTIONS = [
     { value: 'today', label: t('staff.history.range.today') },
@@ -197,6 +205,7 @@ export default function VisitorHistoryPage() {
           if (new Date(visitor.checkinTime) < cutoff) return false;
         }
         if (statusFilter !== 'all' && visitor.status !== statusFilter) return false;
+        if (orgFilter !== 'all' && visitor.organizationId !== orgFilter) return false;
         if (!term) return true;
         const hay = [
           visitor.name,
@@ -216,7 +225,7 @@ export default function VisitorHistoryPage() {
         const tb = b.checkinTime ? new Date(b.checkinTime).getTime() : 0;
         return tb - ta;
       });
-  }, [enriched, range, statusFilter, search]);
+  }, [enriched, range, statusFilter, orgFilter, search]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -346,6 +355,24 @@ export default function VisitorHistoryPage() {
               </option>
             ))}
           </select>
+          {isAdmin && organizationOptions.length > 0 && (
+            <>
+              <Building2 size={16} className="text-slate-400" />
+              <select
+                value={orgFilter}
+                onChange={(e) => setOrgFilter(e.target.value)}
+                title={t('staff.filter.institution')}
+                className="px-3 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-red-300 text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none max-w-[10rem] sm:max-w-[14rem]"
+              >
+                <option value="all">{t('staff.filter.allInstitutions')}</option>
+                {organizationOptions.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
       </div>
 
