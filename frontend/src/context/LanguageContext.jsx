@@ -263,6 +263,7 @@ const DICTIONARY = {
     'staff.faq.modal.update': 'Update Entry',
     'staff.faq.modal.save': 'Save & Refresh Model',
     'staff.faq.modal.required': 'Question and answer are required.',
+    'staff.faq.modal.institutionHint': 'Keep "All institutions" to answer every visitor, or pick one to scope this entry.',
     'staff.faq.modal.saveFailed': 'Unable to save FAQ entry.',
 
     'landing.brand.tagline': 'Smart Navigation',
@@ -599,6 +600,7 @@ const DICTIONARY = {
     'staff.faq.modal.update': 'Mettre à jour',
     'staff.faq.modal.save': 'Enregistrer & rafraîchir',
     'staff.faq.modal.required': 'Question et réponse obligatoires.',
+    'staff.faq.modal.institutionHint': 'Gardez « Toutes les institutions » pour répondre à tous les visiteurs, ou choisissez-en une pour limiter cette entrée.',
     'staff.faq.modal.saveFailed': 'Impossible d\'enregistrer la FAQ.',
 
     'landing.brand.tagline': 'Navigation Intelligente',
@@ -935,6 +937,7 @@ const DICTIONARY = {
     'staff.faq.modal.update': 'Vugurura',
     'staff.faq.modal.save': 'Bika & ongera utangire',
     'staff.faq.modal.required': 'Ikibazo n\'igisubizo birakenewe.',
+    'staff.faq.modal.institutionHint': 'Reka "Ibigo byose" kugira ngo bisubize abashyitsi bose, cyangwa uhitemo kimwe kugira ngo iki kibazo kigarukire kuri cyo.',
     'staff.faq.modal.saveFailed': 'Ntibyashobotse kubika ikibazo.',
 
     'landing.brand.tagline': 'Iyobora Riteye Imbere',

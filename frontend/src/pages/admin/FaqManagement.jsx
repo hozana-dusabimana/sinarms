@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, Plus, Edit2, Trash2, Search, X, Languages } from 'lucide-react';
+import { MessageSquare, Plus, Edit2, Trash2, Search, X, Languages, Building2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -8,6 +8,11 @@ export default function FaqManagement() {
   const { state, createFaq, updateFaq, deleteFaq } = useSinarms();
   const { t } = useLanguage();
   const faqs = state.faq || [];
+  const organizations = (state.organizations || [])
+    .slice()
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  const organizationName = (organizationId) =>
+    organizations.find((org) => org.id === organizationId)?.name || organizationId;
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState(null);
 
@@ -62,6 +67,15 @@ export default function FaqManagement() {
                   <div className="flex items-center gap-3 mb-2">
                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center gap-1">
                       <Languages size={12}/> {(faq.language || 'en').toUpperCase()}
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${
+                        faq.organizationId
+                          ? 'bg-red-50 text-red-600 dark:bg-red-500/15 dark:text-red-400'
+                          : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                      }`}
+                    >
+                      <Building2 size={12}/> {faq.organizationId ? organizationName(faq.organizationId) : t('staff.filter.allInstitutions')}
                     </span>
                     <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">{faq.question}</h3>
                   </div>
@@ -126,6 +140,16 @@ export default function FaqManagement() {
                   </select>
                 </div>
                 <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.filter.institution')}</label>
+                  <select id="faq-org" defaultValue={editingFaq?.organizationId || ''} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] font-bold">
+                    <option value="">{t('staff.filter.allInstitutions')}</option>
+                    {organizations.map((org) => (
+                      <option key={org.id} value={org.id}>{org.name}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 pl-1">{t('staff.faq.modal.institutionHint')}</p>
+                </div>
+                <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">{t('staff.faq.modal.question')}</label>
                   <input id="faq-q" type="text" defaultValue={editingFaq ? editingFaq.question : ''} placeholder={t('staff.faq.modal.questionPlaceholder')} className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
                 </div>
@@ -140,6 +164,7 @@ export default function FaqManagement() {
                     try {
                       const languageRaw = document.getElementById('faq-lang').value;
                       const language = languageRaw === 'FR' ? 'fr' : languageRaw === 'RW' ? 'rw' : 'en';
+                      const organizationId = document.getElementById('faq-org').value || null;
                       const question = document.getElementById('faq-q').value;
                       const answer = document.getElementById('faq-a').value;
 
@@ -149,9 +174,9 @@ export default function FaqManagement() {
                       }
 
                       if (editingFaq) {
-                        await updateFaq(editingFaq.id, { language, question, answer });
+                        await updateFaq(editingFaq.id, { language, question, answer, organizationId });
                       } else {
-                        await createFaq({ language, question, answer });
+                        await createFaq({ language, question, answer, organizationId });
                       }
 
                       setIsModalOpen(false);
