@@ -21,6 +21,7 @@ import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   formatDateTime,
+  formatDurationMinutes,
   getLocationById,
   getLocationMap,
   getNode,
@@ -318,7 +319,7 @@ export default function VisitorHistoryPage() {
         <StatCard icon={<Users size={20} />} label={t('staff.history.totalVisits')} value={stats.total} tint="red" />
         <StatCard icon={<UserCheck size={20} />} label={t('staff.history.active')} value={stats.active} tint="green" />
         <StatCard icon={<LogOutIcon size={20} />} label={t('staff.history.exited')} value={stats.exited} tint="blue" />
-        <StatCard icon={<Clock size={20} />} label={t('staff.history.avgDuration')} value={`${stats.avg}m`} tint="amber" />
+        <StatCard icon={<Clock size={20} />} label={t('staff.history.avgDuration')} value={formatDurationMinutes(stats.avg)} tint="amber" />
       </div>
 
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-sm">

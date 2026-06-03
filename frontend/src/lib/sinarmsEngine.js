@@ -66,13 +66,20 @@ export function formatDurationMinutes(minutes) {
     return '0 min';
   }
 
-  if (minutes < 60) {
-    return `${minutes} min`;
+  const totalMinutes = Math.round(minutes);
+  if (totalMinutes < 60) {
+    return `${totalMinutes} min`;
   }
 
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
+  const totalHours = Math.floor(totalMinutes / 60);
+  if (totalHours < 24) {
+    const remainderMinutes = totalMinutes % 60;
+    return remainderMinutes ? `${totalHours}h ${remainderMinutes}m` : `${totalHours}h`;
+  }
+
+  const days = Math.floor(totalHours / 24);
+  const remainderHours = totalHours % 24;
+  return remainderHours ? `${days}d ${remainderHours}h` : `${days}d`;
 }
 
 export function minutesBetween(start, end = new Date().toISOString()) {

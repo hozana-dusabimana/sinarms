@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart3, TrendingUp, Users, Clock, ShieldAlert, ArrowUpRight, ArrowDownRight, Calendar, MapPin } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import { formatDurationMinutes } from '../../lib/sinarmsEngine';
 import api from '../../lib/api';
 
 function weekOfYear(date) {
@@ -171,7 +172,7 @@ export default function AnalyticsDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { title: "Total Visitors", val: String(analytics.totalVisitors), change: "", up: true, icon: <Users /> },
-          { title: "Avg Duration", val: `${analytics.averageDuration} min`, change: "", up: true, icon: <Clock /> },
+          { title: "Avg Duration", val: formatDurationMinutes(analytics.averageDuration), change: "", up: true, icon: <Clock /> },
           { title: "Active Now", val: String(analytics.activeVisitors), change: "", up: true, icon: <TrendingUp /> },
           { title: "Total Alerts", val: String(analytics.alertsToday), change: "", up: false, icon: <ShieldAlert /> },
         ].map((stat, i) => (

@@ -5,7 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap 
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
+import { formatDurationMinutes, getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
 
 // Leaflet default icon fix
 delete L.Icon.Default.prototype._getIconUrl;
@@ -209,7 +209,7 @@ export default function DashboardPage() {
     },
     {
       label: t('staff.dashboard.stat.avgDuration'),
-      value: `${analytics?.averageDuration ?? 0}m`,
+      value: formatDurationMinutes(analytics?.averageDuration ?? 0),
       icon: <Activity className="w-6 h-6" />,
       color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400',
     },
@@ -560,7 +560,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('staff.dashboard.overview.avgDuration')}</span>
-                <span className="text-lg font-extrabold text-slate-900 dark:text-white">{analytics.averageDuration}m</span>
+                <span className="text-lg font-extrabold text-slate-900 dark:text-white">{formatDurationMinutes(analytics.averageDuration)}</span>
               </div>
               <div className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
                 <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{t('staff.dashboard.overview.onSite')}</span>
