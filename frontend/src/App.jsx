@@ -3,6 +3,7 @@ import ProtectedStaffRoute from './components/auth/ProtectedStaffRoute';
 import StaffLayout from './layouts/StaffLayout';
 import VisitorLayout from './layouts/VisitorLayout';
 import LandingPage from './pages/LandingPage';
+import PublicFaqPage from './pages/PublicFaqPage';
 import AnalyticsDashboard from './pages/admin/AnalyticsDashboard';
 import AuditLog from './pages/admin/AuditLog';
 import FacilityMapEditor from './pages/admin/FacilityMapEditor';
@@ -22,6 +23,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/faq" element={<PublicFaqPage />} />
         <Route path="/visit" element={<VisitorLayout />}>
           <Route index element={<CheckInPage />} />
           <Route path="navigate" element={<MapNavigationPage />} />

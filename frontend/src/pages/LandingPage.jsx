@@ -157,6 +157,13 @@ export default function LandingPage() {
             <a href="#cta" className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
               {t('landing.nav.getStarted')}
             </a>
+            <button
+              type="button"
+              onClick={() => navigate('/faq')}
+              className="px-4 py-2 rounded-full text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              {t('landing.nav.faq')}
+            </button>
           </nav>
 
           <div className="flex items-center gap-2">

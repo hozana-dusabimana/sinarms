@@ -1,5 +1,5 @@
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Globe2 } from 'lucide-react';
+import { ShieldCheck, Globe2, HelpCircle } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import { useSinarms } from '../context/SinarmsContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -138,6 +138,14 @@ export default function VisitorLayout() {
                 label="Updates"
                 triggerClassName="relative p-2 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-300 dark:hover:text-slate-100 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm transition-colors"
               />
+            )}
+            {!isNavigating && (
+              <Link
+                to="/faq"
+                className="flex items-center gap-1.5 h-9 px-3 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm"
+              >
+                <HelpCircle size={14} /> {t('landing.nav.faq')}
+              </Link>
             )}
             <button
               type="button"

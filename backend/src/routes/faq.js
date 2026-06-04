@@ -25,6 +25,29 @@ function pushFaqToAiEngine(faq) {
     .catch(() => null);
 }
 
+// Public, unauthenticated help feed for the visitor-facing FAQ page. Anyone can
+// read it, so we expose only display fields. Entries belonging to an inactive
+// institution are hidden; a specific ?organizationId= returns that institution's
+// entries plus the global ones (organizationId === null) that apply everywhere.
+router.get('/public', async (req, res) => {
+  const state = await getState();
+  const { organizationId } = req.query;
+  const activeOrgIds = new Set(
+    state.organizations.filter((org) => org.status === 'active').map((org) => org.id),
+  );
+  const entries = state.faq
+    .filter((entry) => !entry.organizationId || activeOrgIds.has(entry.organizationId))
+    .filter((entry) => !organizationId || !entry.organizationId || entry.organizationId === organizationId)
+    .map((entry) => ({
+      id: entry.id,
+      organizationId: entry.organizationId || null,
+      language: entry.language || 'en',
+      question: entry.question,
+      answer: entry.answer,
+    }));
+  return res.json(entries);
+});
+
 router.get('/', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
   const state = await getState();
   // Receptionists only manage their own institution; they additionally see the
