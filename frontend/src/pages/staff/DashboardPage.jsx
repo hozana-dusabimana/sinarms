@@ -135,6 +135,15 @@ export default function DashboardPage() {
   const visibleActiveVisitors = institutionFilter
     ? activeVisitors.filter((visitor) => visitor.organizationId === institutionFilter)
     : activeVisitors;
+  // When an admin narrows the directory/map to one institution, the Security
+  // Alerts panel narrows with it. An alert belongs to whichever institution its
+  // visitor does, so we resolve visitor -> organizationId and keep only matches.
+  const visibleAlerts = institutionFilter
+    ? (activeAlerts || []).filter((alert) => {
+        const alertVisitor = scopedVisitors.find((visitor) => visitor.id === alert.visitorId);
+        return alertVisitor?.organizationId === institutionFilter;
+      })
+    : (activeAlerts || []);
   // A scoped staff member with no assigned location can't be tied to any
   // visitors, so every list/stat on this page is necessarily empty. Surface an
   // explicit banner instead of a silently blank dashboard that reads as "broken".
@@ -189,9 +198,9 @@ export default function DashboardPage() {
   // Alerts can run into the dozens, so the panel paginates. alertPageSafe
   // re-clamps on every render so dismissing the last item on a page (which
   // shrinks the list) doesn't leave us stranded on an empty page.
-  const alertPageCount = Math.max(1, Math.ceil(activeAlerts.length / ALERTS_PER_PAGE));
+  const alertPageCount = Math.max(1, Math.ceil(visibleAlerts.length / ALERTS_PER_PAGE));
   const alertPageSafe = Math.min(alertPage, alertPageCount - 1);
-  const pagedAlerts = activeAlerts.slice(
+  const pagedAlerts = visibleAlerts.slice(
     alertPageSafe * ALERTS_PER_PAGE,
     alertPageSafe * ALERTS_PER_PAGE + ALERTS_PER_PAGE,
   );
@@ -332,7 +341,7 @@ export default function DashboardPage() {
               {isAdmin && organizationOptions.length > 0 && (
                 <select
                   value={institutionFilter}
-                  onChange={(e) => setInstitutionFilter(e.target.value)}
+                  onChange={(e) => { setInstitutionFilter(e.target.value); setAlertPage(0); }}
                   title={t('staff.filter.institution')}
                   className="bg-slate-100 dark:bg-slate-800/80 border-none rounded-full px-3 py-1.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200 max-w-[9rem] sm:max-w-[13rem]"
                 >
@@ -522,12 +531,12 @@ export default function DashboardPage() {
               <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <ShieldAlert size={18} className="text-red-500" /> {t('staff.dashboard.alerts.title')}
               </h3>
-              <span className="bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{activeAlerts.length}</span>
+              <span className="bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 text-xs font-black px-2 py-0.5 rounded-full">{visibleAlerts.length}</span>
             </div>
 
             <div className="p-4 space-y-3 flex-1 overflow-auto custom-scrollbar relative z-10">
               <AnimatePresence>
-                {activeAlerts.length === 0 ? (
+                {visibleAlerts.length === 0 ? (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-3 pb-8">
                     <ShieldAlert size={48} className="opacity-20" />
                     <p className="font-bold">{t('staff.dashboard.alerts.empty')}</p>
