@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Edit2, Trash2, MapPin, Search, CheckCircle2, ChevronDown, X, LocateFixed } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, MapPin, Search, CheckCircle2, ChevronDown, X, LocateFixed, RotateCcw } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
 export default function OrganizationSettings() {
@@ -160,7 +160,7 @@ export default function OrganizationSettings() {
                       >
                         <Edit2 size={16} />
                       </button>
-                      <button 
+                      <button
                         onClick={async () => {
                           try {
                             await deactivateOrganization(org.id);
@@ -168,9 +168,14 @@ export default function OrganizationSettings() {
                             window.alert(error?.message || 'Unable to update organization status.');
                           }
                         }}
-                        className="p-2 text-slate-400 hover:text-red-600 dark:hover:text-red-400 transition-colors bg-white dark:bg-slate-900 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
+                        title={org.status === 'active' ? 'Deactivate organization' : 'Reactivate organization'}
+                        className={`p-2 rounded-lg transition-colors bg-white dark:bg-slate-900 ${
+                          org.status === 'active'
+                            ? 'text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10'
+                            : 'text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-500/10'
+                        }`}
                       >
-                        <Trash2 size={16} />
+                        {org.status === 'active' ? <Trash2 size={16} /> : <RotateCcw size={16} />}
                       </button>
                     </div>
                   </div>

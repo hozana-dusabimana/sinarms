@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Plus, Edit2, Trash2, Shield, Search, X } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Shield, Search, X, RotateCcw } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -148,9 +148,14 @@ export default function UserManagement() {
                             window.alert(error?.message || 'Unable to update user status.');
                           }
                         }}
-                        className="p-2 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 rounded-lg text-red-600 dark:text-red-400 transition-colors"
+                        title={u.status === 'active' ? 'Deactivate user' : 'Reactivate user'}
+                        className={`p-2 rounded-lg transition-colors ${
+                          u.status === 'active'
+                            ? 'bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 text-red-600 dark:text-red-400'
+                            : 'bg-green-50 hover:bg-green-100 dark:bg-green-500/10 dark:hover:bg-green-500/20 text-green-600 dark:text-green-400'
+                        }`}
                       >
-                        <Trash2 size={16} />
+                        {u.status === 'active' ? <Trash2 size={16} /> : <RotateCcw size={16} />}
                       </button>
                     </div>
                   </td>
