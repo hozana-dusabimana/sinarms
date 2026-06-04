@@ -16,6 +16,7 @@ import {
   Mail,
   Building2,
   WifiOff,
+  Trash2,
 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -127,7 +128,7 @@ function StatusPill({ status, t }) {
 }
 
 export default function VisitorHistoryPage() {
-  const { state, fetchVisitorHistory, currentUser, activeAlerts } = useSinarms();
+  const { state, fetchVisitorHistory, deleteVisitor, currentUser, activeAlerts } = useSinarms();
   const { t } = useLanguage();
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -137,6 +138,7 @@ export default function VisitorHistoryPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [orgFilter, setOrgFilter] = useState('all');
   const [selected, setSelected] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   // Admins see visits across every institution, so they get a control to narrow
   // the table to one. Scoped staff only ever see their own, so it's hidden.
@@ -272,6 +274,24 @@ export default function VisitorHistoryPage() {
     }));
     if (rows.length === 0) return;
     downloadCsv(`visitor-history-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  };
+
+  const handleDelete = async (visitor) => {
+    if (!visitor) return;
+    const confirmed = window.confirm(
+      t('staff.history.delete.confirm', { name: visitor.name || t('staff.history.unknownVisitor') }),
+    );
+    if (!confirmed) return;
+    setDeletingId(visitor.id);
+    try {
+      await deleteVisitor(visitor.id);
+      setHistory((current) => current.filter((entry) => entry.id !== visitor.id));
+      setSelected(null);
+    } catch (err) {
+      window.alert(err?.message || t('staff.history.delete.failed'));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const roleLabel = currentUser?.role === 'admin' ? t('staff.layout.administrator') : t('staff.layout.receptionist');
@@ -571,6 +591,18 @@ export default function VisitorHistoryPage() {
                     </p>
                   </div>
                 )}
+              </div>
+              <div className="p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 flex items-center justify-end">
+                <button
+                  onClick={() => handleDelete(selected)}
+                  disabled={deletingId === selected.id}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/20 transition-all disabled:opacity-60"
+                >
+                  <Trash2 size={16} />
+                  {deletingId === selected.id
+                    ? t('staff.history.delete.deleting')
+                    : t('staff.history.delete.action')}
+                </button>
               </div>
             </motion.div>
           </motion.div>

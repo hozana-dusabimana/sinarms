@@ -636,6 +636,16 @@ export function SinarmsProvider({ children }) {
     return result;
   }
 
+  async function deleteVisitor(visitorId) {
+    const result = await request(`/api/visitors/${visitorId}`, {
+      method: 'delete',
+    });
+    // Keep the live dashboard / map in sync — the visitor and any of their
+    // alerts and notifications are gone server-side after this call.
+    await loadStaffBootstrap();
+    return result;
+  }
+
   async function updateLocationMap(locationId, nextMap) {
     const savedMap = await request(`/api/locations/${locationId}/map`, {
       method: 'put',
@@ -885,6 +895,7 @@ export function SinarmsProvider({ children }) {
     createFaq,
     updateFaq,
     deleteFaq,
+    deleteVisitor,
     updateLocationMap,
     setLocationFloorplan,
     downloadLocationQr,

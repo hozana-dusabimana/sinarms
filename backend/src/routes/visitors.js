@@ -4,6 +4,7 @@ const { requireAuth, requirePermission, requireRole } = require('../middleware/a
 const {
   buildVisitorResponse,
   checkoutVisitor,
+  deleteVisitor,
   notifyDepartment,
   qrCheckin,
   registerVisitor,
@@ -154,6 +155,30 @@ router.get('/history', requireAuth, requireRole(['admin', 'receptionist']), asyn
       locationId: req.query.locationId || undefined,
     }),
   );
+});
+
+router.delete('/:id', requireAuth, requireRole(['admin', 'receptionist']), async (req, res) => {
+  const state = await getState();
+  const visitor = state.visitors.find((entry) => entry.id === req.params.id);
+  if (!visitor) {
+    return res.status(404).json({ message: 'Visitor not found.' });
+  }
+
+  // Receptionists are scoped to their own institution and location — they may
+  // only delete visitors that belong to them. Admins delete across all tenants.
+  if (
+    req.user.role === 'receptionist' &&
+    (visitor.organizationId !== req.user.organizationId || visitor.locationId !== req.user.locationId)
+  ) {
+    return res.status(403).json({ message: 'You can only delete visitors for your institution.' });
+  }
+
+  const removed = await deleteVisitor({ actorUser: req.user, visitorId: req.params.id });
+  if (!removed) {
+    return res.status(404).json({ message: 'Visitor not found.' });
+  }
+
+  return res.json({ success: true, id: removed.id });
 });
 
 router.get('/:id', async (req, res) => {

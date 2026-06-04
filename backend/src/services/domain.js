@@ -805,6 +805,47 @@ async function checkoutVisitor({ actorUser, visitorId, manual, survey }) {
   return visitor;
 }
 
+// Permanently removes a visitor and every record that hangs off them — position
+// history, alerts, and notifications all reference the visitor by id and would
+// otherwise be left dangling (and would resurface a "ghost" in scoped views,
+// which resolve ownership through the now-missing visitor). Mirrors the cleanup
+// the store performs when pruning visitors for a retired institution. Returns
+// the removed visitor (pre-deletion snapshot) so the caller can report it, or
+// null when there was nothing to delete.
+async function deleteVisitor({ actorUser, visitorId }) {
+  let removed = null;
+
+  await mutateState((draft) => {
+    const visitor = draft.visitors.find((entry) => entry.id === visitorId);
+    if (!visitor) {
+      return draft;
+    }
+    removed = { id: visitor.id, name: visitor.name };
+
+    draft.visitors = draft.visitors.filter((entry) => entry.id !== visitorId);
+    draft.visitorPositions = (draft.visitorPositions || []).filter(
+      (position) => position.visitorId !== visitorId,
+    );
+    draft.alerts = (draft.alerts || []).filter((alert) => alert.visitorId !== visitorId);
+    draft.notifications = (draft.notifications || []).filter(
+      (notification) => notification.visitorId !== visitorId,
+    );
+
+    return addAudit(draft, actorUser, {
+      actionType: 'DELETE_VISITOR',
+      targetType: 'visitor',
+      targetId: visitor.id,
+      details: `Deleted visitor ${visitor.name}.`,
+    });
+  });
+
+  if (removed) {
+    emit('visitor:deleted', { id: removed.id });
+  }
+
+  return removed;
+}
+
 // When a visitor's GPS is switched off or unavailable, the visitor app stops
 // reporting position — it only advances from a live GPS fix and the geofenced
 // auto-checkout cannot fire without one — so the session simply goes quiet.
@@ -1193,6 +1234,7 @@ module.exports = {
   buildVisitorResponse,
   chatbotRespond,
   checkoutVisitor,
+  deleteVisitor,
   generateLocationQr,
   logout,
   notifyDepartment,
