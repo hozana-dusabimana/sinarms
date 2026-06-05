@@ -69,7 +69,7 @@ function detectNameError(rawValue, t) {
 
 export default function CheckInPage() {
   const navigate = useNavigate();
-  const { state, classifyVisitorDestination, registerVisitor, qrCheckin, isReady, currentVisitor } = useSinarms();
+  const { state, classifyVisitorDestination, registerVisitor, isReady, currentVisitor } = useSinarms();
   const { language, t } = useLanguage();
   const [searchParams, setSearchParams] = useSearchParams();
   const [formData, setFormData] = useState({ name: '', idOrPhone: '', destination: '' });
@@ -103,14 +103,6 @@ export default function CheckInPage() {
       : gpsError
         ? 'unavailable'
         : 'pending';
-
-  // Mirror of the raw fix for the QR auto-checkin effect, which fires once and
-  // must read the freshest fix at navigate time without taking it as a
-  // dependency (that would retrigger the effect as the GPS watch updates).
-  const gpsCoordsRef = useRef(null);
-  useEffect(() => {
-    if (isValidLatLng(rawGpsPosition)) gpsCoordsRef.current = rawGpsPosition;
-  }, [rawGpsPosition]);
 
   const entranceCoords = useMemo(() => {
     if (!selectedLocationId) return null;
@@ -181,9 +173,11 @@ export default function CheckInPage() {
   }, [selectedLocationId, state.maps]);
 
   // QR scan flow: when the visitor lands on /visit?qr=<token>&location=<id>,
-  // skip the form entirely and create the visit straight away. Once it
-  // succeeds we navigate to the map dashboard. We strip the query params
-  // afterwards so a manual reload doesn't re-attempt the registration.
+  // pre-select that location and drop them on the identity step so they still
+  // enter their name, ID/phone and destination — a scan must not create an
+  // anonymous visit. The token is matched against the location so a stale or
+  // wrong QR shows the error banner instead of silently picking a location. We
+  // strip the query params afterwards so a manual reload doesn't re-trigger.
   useEffect(() => {
     if (!isReady) return;
     if (qrAttemptRef.current) return;
@@ -192,31 +186,27 @@ export default function CheckInPage() {
     if (!qrToken || !qrLocationId) return;
 
     qrAttemptRef.current = true;
-    setQrStatus({ kind: 'loading' });
 
-    qrCheckin({
-      qrToken,
-      locationId: qrLocationId,
-      language: language === 'fr' ? 'fr' : language === 'rw' ? 'rw' : 'en',
-    })
-      .then((visitor) => {
-        const next = new URLSearchParams(searchParams);
-        next.delete('qr');
-        next.delete('location');
-        setSearchParams(next, { replace: true });
-        navigate('/visit/navigate', {
-          state: {
-            visitorId: visitor.id,
-            gps: isValidLatLng(gpsCoordsRef.current) ? gpsCoordsRef.current : null,
-          },
-          replace: true,
-        });
-      })
-      .catch(() => {
-        setQrStatus({ kind: 'error' });
-        qrAttemptRef.current = false;
-      });
-  }, [isReady, searchParams, qrCheckin, navigate, setSearchParams, language]);
+    const match = (state.locations || []).find(
+      (loc) => loc.id === qrLocationId && loc.qrCodeToken === qrToken && loc.status === 'active',
+    );
+
+    const next = new URLSearchParams(searchParams);
+    next.delete('qr');
+    next.delete('location');
+    setSearchParams(next, { replace: true });
+
+    if (!match) {
+      setQrStatus({ kind: 'error' });
+      qrAttemptRef.current = false;
+      return;
+    }
+
+    // Pre-fill the location and jump past the location step; the visitor still
+    // completes identity (name + ID/phone) and destination before submitting.
+    setSelectedLocationId(match.id);
+    setStep(1);
+  }, [isReady, searchParams, setSearchParams, state.locations]);
 
   const TOTAL_STEPS = 3;
   const steps = [
