@@ -393,6 +393,9 @@ async function loadStateFromDatabase() {
       address: row.address || '',
       logoUrl: row.logo_url || null,
       status: row.status,
+      // Defaults to true so organizations seeded before this column existed keep
+      // the geofence on until an admin opts out.
+      distanceCheckEnabled: row.distance_check_enabled == null ? true : Boolean(Number(row.distance_check_enabled)),
       createdAt: toIsoString(row.created_at),
       createdBy: row.created_by,
     })),
@@ -534,8 +537,8 @@ async function persistState(state) {
     for (const organization of nextState.organizations) {
       await connection.query(
         `INSERT INTO organizations (
-          id, name, description, contact_email, contact_phone, address, logo_url, status, created_by, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          id, name, description, contact_email, contact_phone, address, logo_url, status, distance_check_enabled, created_by, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           organization.id,
           organization.name,
@@ -545,6 +548,7 @@ async function persistState(state) {
           organization.address || '',
           organization.logoUrl,
           organization.status,
+          organization.distanceCheckEnabled === false ? 0 : 1,
           organization.createdBy,
           toSqlDateTime(organization.createdAt),
         ],

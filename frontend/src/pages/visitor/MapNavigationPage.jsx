@@ -384,6 +384,15 @@ export default function MapNavigationPage() {
   // Sustained-readings debounce stops a single noisy GPS fix from triggering.
   useEffect(() => {
     if (!currentVisitor?.id || currentVisitor.status !== 'active') return;
+    // Auto-checkout is tied to the distance check: when the visitor's
+    // institution has turned the geofence off, the receptionist closes the
+    // visit manually, so the watcher must not auto-end it.
+    const visitLocation = (state.locations || []).find((loc) => loc.id === currentVisitor.locationId);
+    const visitOrg = visitLocation && (state.organizations || []).find((org) => org.id === visitLocation.organizationId);
+    if (visitOrg && visitOrg.distanceCheckEnabled === false) {
+      outsideSinceRef.current = null;
+      return;
+    }
     if (!isValidLatLng(livePosition)) {
       outsideSinceRef.current = null;
       return;

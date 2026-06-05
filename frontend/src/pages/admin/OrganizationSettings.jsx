@@ -14,6 +14,7 @@ export default function OrganizationSettings() {
   const [searchQuery, setSearchQuery] = useState('');
   const [locationOrgId, setLocationOrgId] = useState(null);
   const [locationName, setLocationName] = useState('');
+  const [distanceCheckEnabled, setDistanceCheckEnabled] = useState(true);
   
   const [gpsValue, setGpsValue] = useState('');
   const [isGettingGps, setIsGettingGps] = useState(false);
@@ -88,6 +89,7 @@ export default function OrganizationSettings() {
         <button 
           onClick={() => {
             setEditingOrg(null);
+            setDistanceCheckEnabled(true);
             setIsOrgModalOpen(true);
           }}
           className="bg-[var(--color-brand-terracotta)] hover:bg-red-600 dark:bg-red-500 dark:hover:bg-red-400 text-white px-6 py-2.5 rounded-xl shadow-md shadow-red-500/30 transition-all font-bold tracking-wide flex items-center gap-2"
@@ -154,6 +156,7 @@ export default function OrganizationSettings() {
                       <button 
                         onClick={() => {
                           setEditingOrg(org);
+                          setDistanceCheckEnabled(org.distanceCheckEnabled !== false);
                           setIsOrgModalOpen(true);
                         }}
                         className="p-2 text-slate-400 hover:text-[var(--color-brand-terracotta)] dark:hover:text-red-400 transition-colors bg-white dark:bg-slate-900 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10"
@@ -270,6 +273,24 @@ export default function OrganizationSettings() {
                   <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Receptionist Password</label>
                   <input type="password" placeholder="••••••••" className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2.5 text-sm dark:text-white outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)]" />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setDistanceCheckEnabled((value) => !value)}
+                  className="w-full flex items-start gap-3 text-left p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 hover:border-[var(--color-brand-terracotta)] dark:hover:border-red-500 transition-colors"
+                >
+                  <LocateFixed size={18} className={`mt-0.5 shrink-0 ${distanceCheckEnabled ? 'text-[var(--color-brand-terracotta)] dark:text-red-400' : 'text-slate-400'}`} />
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-slate-800 dark:text-white">Distance check on check-in</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {distanceCheckEnabled
+                        ? 'Visitors must be near the entrance to check in, and are auto-checked-out when they leave.'
+                        : 'Visitors can check in from anywhere. The receptionist checks them out manually.'}
+                    </p>
+                  </div>
+                  <span className={`mt-0.5 relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${distanceCheckEnabled ? 'bg-[var(--color-brand-terracotta)] dark:bg-red-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                    <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${distanceCheckEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                  </span>
+                </button>
                 <div className="pt-4 flex gap-3">
                   <button onClick={() => setIsOrgModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
                   <button onClick={async () => {
@@ -286,13 +307,13 @@ export default function OrganizationSettings() {
                       }
 
                       if (editingOrg) {
-                        await updateOrganization(editingOrg.id, { name, contactEmail: receptionistEmail });
+                        await updateOrganization(editingOrg.id, { name, contactEmail: receptionistEmail, distanceCheckEnabled });
                       } else {
                         if (!receptionistEmail || !receptionistPassword) {
                           window.alert('Receptionist email and password are required.');
                           return;
                         }
-                        const org = await createOrganization({ name, contactEmail: receptionistEmail });
+                        const org = await createOrganization({ name, contactEmail: receptionistEmail, distanceCheckEnabled });
                         await createUser({
                           name: `${name} Reception`,
                           email: receptionistEmail,

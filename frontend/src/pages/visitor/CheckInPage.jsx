@@ -126,11 +126,6 @@ export default function CheckInPage() {
     return distanceMeters(gpsCoords, entranceCoords);
   }, [gpsCoords, entranceCoords]);
 
-  const isOutOfRange =
-    gpsState === 'granted' &&
-    distanceToEntranceM != null &&
-    distanceToEntranceM > CHECKIN_RADIUS_M;
-
   const nameError = detectNameError(formData.name, t);
   const idOrPhoneError = detectIdOrPhoneError(formData.idOrPhone, t);
   const showNameError = touched.name && nameError;
@@ -159,6 +154,17 @@ export default function CheckInPage() {
     (selectedLocation
       ? state.organizations.find((organization) => organization.id === selectedLocation.organizationId)
       : null) || activeOrganization;
+
+  // The visitor's institution can turn the proximity geofence off, in which
+  // case check-in is allowed from anywhere (the receptionist closes visits
+  // manually). Default to on when the flag is missing.
+  const distanceCheckEnabled = selectedOrganization ? selectedOrganization.distanceCheckEnabled !== false : true;
+
+  const isOutOfRange =
+    distanceCheckEnabled &&
+    gpsState === 'granted' &&
+    distanceToEntranceM != null &&
+    distanceToEntranceM > CHECKIN_RADIUS_M;
 
   const destinationOptions = useMemo(() => {
     const map = (selectedLocationId && state.maps[selectedLocationId]) || null;
@@ -518,7 +524,7 @@ export default function CheckInPage() {
                 {t('visitor.checkin.locating')}
               </div>
             )}
-            {gpsState === 'granted' && distanceToEntranceM != null && !isOutOfRange && (
+            {distanceCheckEnabled && gpsState === 'granted' && distanceToEntranceM != null && !isOutOfRange && (
               <div className="flex items-center gap-2 mb-4 px-3 py-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
                 <Navigation size={14} />
                 {t('visitor.checkin.inRange', { meters: Math.round(distanceToEntranceM) })}

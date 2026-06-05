@@ -1,7 +1,7 @@
 const supertest = require('supertest');
 const { mysqlAvailable } = require('./helpers/mysqlState');
 const { ensureApp, resetToSeed } = require('./helpers/testApp');
-const { loginReceptionist } = require('./helpers/auth');
+const { loginReceptionist, loginAdmin } = require('./helpers/auth');
 
 const describeIf = mysqlAvailable() ? describe : describe.skip;
 
@@ -99,6 +99,37 @@ describeIf('API visitors — geofenced self check-in', () => {
     });
 
     expect(response.status).toBe(200);
+    expect(response.body.visitor.status).toBe('active');
+  });
+
+  test('self check-in from far away succeeds when the organization disabled the distance check', async () => {
+    const agent = supertest.agent(app);
+    const { organization, location, destination } = await pickContext(agent);
+
+    // Admin turns the distance check off for the organization.
+    const adminAgent = supertest.agent(app);
+    const login = await loginAdmin(adminAgent);
+    expect(login.status).toBe(200);
+    const toggle = await adminAgent
+      .put(`/api/organizations/${organization.id}`)
+      .send({ distanceCheckEnabled: false });
+    expect(toggle.status).toBe(200);
+    expect(toggle.body.distanceCheckEnabled).toBe(false);
+
+    // A far-away visitor can now check in to that organization's location.
+    const response = await agent.post('/api/visitors/checkin').send({
+      name: 'Anywhere Visitor',
+      idOrPhone: '0788000006',
+      destinationText: destination.label,
+      language: 'en',
+      organizationId: organization.id,
+      locationId: location.id,
+      gpsLat: FAR_LAT,
+      gpsLng: FAR_LNG,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.visitor).toBeTruthy();
     expect(response.body.visitor.status).toBe('active');
   });
 

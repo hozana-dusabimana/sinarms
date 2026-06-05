@@ -6,7 +6,7 @@ const { generateLocationQr } = require('../services/domain');
 
 const router = express.Router();
 
-const ORGANIZATION_UPDATABLE = ['name', 'description', 'contactEmail', 'contactPhone', 'address', 'logoUrl', 'status'];
+const ORGANIZATION_UPDATABLE = ['name', 'description', 'contactEmail', 'contactPhone', 'address', 'logoUrl', 'status', 'distanceCheckEnabled'];
 const LOCATION_UPDATABLE = ['name', 'address', 'floorCount', 'description', 'status', 'qrCodeToken', 'receptionistIds'];
 
 function pick(source, allowed) {
@@ -36,6 +36,8 @@ router.post('/', requireAuth, requireRole(['admin']), async (req, res) => {
       address: req.body.address || '',
       logoUrl: req.body.logoUrl || null,
       status: 'active',
+      // New organizations enforce the geofence by default; admins opt out later.
+      distanceCheckEnabled: req.body.distanceCheckEnabled !== false,
       createdAt: new Date().toISOString(),
       createdBy: req.user.id,
     };

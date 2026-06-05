@@ -537,7 +537,11 @@ async function registerVisitor({ actorUser, payload, source }) {
   // visitor is physically at reception. If the client didn't (or couldn't)
   // send GPS we fall through; the auto-checkout watcher won't engage either,
   // and the receptionist remains the manual escape hatch.
-  if (source === 'self' && Number.isFinite(payload.gpsLat) && Number.isFinite(payload.gpsLng)) {
+  // The check is also skipped entirely when the organization has turned the
+  // distance check off — open check-in from anywhere, with manual checkout only.
+  const organization = state.organizations.find((entry) => entry.id === location.organizationId);
+  const distanceCheckEnabled = !organization || organization.distanceCheckEnabled !== false;
+  if (source === 'self' && distanceCheckEnabled && Number.isFinite(payload.gpsLat) && Number.isFinite(payload.gpsLng)) {
     const map = getLocationMap(state, payload.locationId);
     const entrance = getNode(map, 'entrance');
     if (entrance && Number.isFinite(Number(entrance.lat)) && Number.isFinite(Number(entrance.lng))) {
