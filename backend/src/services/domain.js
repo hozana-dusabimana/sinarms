@@ -1036,6 +1036,15 @@ async function qrCheckin({ qrToken, locationId, name, idOrPhone, language }) {
   return result;
 }
 
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 async function generateLocationQr(location) {
   // Encode a real https URL so phone cameras open the visitor portal directly,
   // pre-filled with the location id and one-time QR token. The portal detects
@@ -1043,10 +1052,38 @@ async function generateLocationQr(location) {
   const config = require('../config');
   const base = (config.frontendUrl || 'http://localhost:5173').replace(/\/+$/, '');
   const url = `${base}/visit?qr=${encodeURIComponent(location.qrCodeToken)}&location=${encodeURIComponent(location.id)}`;
-  return QRCode.toString(url, {
-    type: 'svg',
-    margin: 1,
-  });
+
+  const qrSvg = await QRCode.toString(url, { type: 'svg', margin: 1 });
+
+  // Re-embed the QR as a nested <svg> so we can also print the human-readable
+  // URL beneath it — useful when a camera can't scan and someone needs to type
+  // the link, and so a printed poster always carries the address it points to.
+  const viewBoxMatch = qrSvg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+  const qrUnits = viewBoxMatch ? viewBoxMatch[1] : '39';
+  const qrInner = qrSvg.replace(/^[\s\S]*?<svg[^>]*>/, '').replace(/<\/svg>\s*$/, '');
+
+  const QR_PX = 300;
+  const PAD = 24;
+  const width = QR_PX + PAD * 2;
+  const qrY = PAD;
+
+  // Wrap the URL onto multiple monospace lines so a long link still fits.
+  const maxChars = 38;
+  const lines = [];
+  for (let i = 0; i < url.length; i += maxChars) lines.push(url.slice(i, i + maxChars));
+  const lineHeight = 15;
+  const textTop = qrY + QR_PX + 26;
+  const height = textTop + (lines.length - 1) * lineHeight + PAD;
+
+  const tspans = lines
+    .map((line, idx) => `<tspan x="${width / 2}" dy="${idx === 0 ? 0 : lineHeight}">${escapeXml(line)}</tspan>`)
+    .join('');
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`
+    + '<rect width="100%" height="100%" fill="#ffffff"/>'
+    + `<svg x="${PAD}" y="${qrY}" width="${QR_PX}" height="${QR_PX}" viewBox="0 0 ${qrUnits} ${qrUnits}" shape-rendering="crispEdges">${qrInner}</svg>`
+    + `<text x="${width / 2}" y="${textTop}" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#0f172a">${tspans}</text>`
+    + '</svg>';
 }
 
 async function acknowledgeAlert({ actorUser, alertId }) {
