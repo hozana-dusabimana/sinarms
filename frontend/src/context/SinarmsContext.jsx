@@ -680,7 +680,7 @@ export function SinarmsProvider({ children }) {
     }));
   }
 
-  async function downloadLocationQr(locationId) {
+  async function downloadLocationQr(locationId, destNodeId) {
     const location = getLocationById(state, locationId);
     if (!location) {
       return;
@@ -688,6 +688,7 @@ export function SinarmsProvider({ children }) {
 
     const response = await api.get(`/api/locations/${locationId}/qr-code`, {
       responseType: 'text',
+      params: destNodeId ? { dest: destNodeId } : undefined,
     });
 
     downloadTextFile(

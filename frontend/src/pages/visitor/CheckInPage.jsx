@@ -172,18 +172,20 @@ export default function CheckInPage() {
       .map((node) => ({ value: node.id, label: node.label }));
   }, [selectedLocationId, state.maps]);
 
-  // QR scan flow: when the visitor lands on /visit?qr=<token>&location=<id>,
-  // pre-select that location and drop them on the identity step so they still
-  // enter their name, ID/phone and destination — a scan must not create an
-  // anonymous visit. The token is matched against the location so a stale or
-  // wrong QR shows the error banner instead of silently picking a location. We
-  // strip the query params afterwards so a manual reload doesn't re-trigger.
+  // QR scan flow: when the visitor lands on /visit?qr=<token>&location=<id>&dest=<node>,
+  // pre-select that location AND its encoded destination, then drop them on the
+  // identity step so they only enter their own name and ID/phone — a scan must
+  // not create an anonymous visit. The token is matched against the location so
+  // a stale or wrong QR shows the error banner instead of silently picking a
+  // location. We strip the query params afterwards so a manual reload doesn't
+  // re-trigger.
   useEffect(() => {
     if (!isReady) return;
     if (qrAttemptRef.current) return;
     const qrToken = searchParams.get('qr');
     const qrLocationId = searchParams.get('location');
     if (!qrToken || !qrLocationId) return;
+    const qrDest = searchParams.get('dest');
 
     qrAttemptRef.current = true;
 
@@ -194,6 +196,7 @@ export default function CheckInPage() {
     const next = new URLSearchParams(searchParams);
     next.delete('qr');
     next.delete('location');
+    next.delete('dest');
     setSearchParams(next, { replace: true });
 
     if (!match) {
@@ -203,10 +206,18 @@ export default function CheckInPage() {
     }
 
     // Pre-fill the location and jump past the location step; the visitor still
-    // completes identity (name + ID/phone) and destination before submitting.
+    // completes their identity (name + ID/phone) before submitting.
     setSelectedLocationId(match.id);
+
+    // Pre-select the encoded destination when it's a real office node at this
+    // location, so the visitor doesn't have to choose it.
+    const destNode = qrDest
+      ? (state.maps?.[match.id]?.nodes || []).find((n) => n.id === qrDest && n.type === 'office')
+      : null;
+    if (destNode) setSelectedDestination(destNode.id);
+
     setStep(1);
-  }, [isReady, searchParams, setSearchParams, state.locations]);
+  }, [isReady, searchParams, setSearchParams, state.locations, state.maps]);
 
   const TOTAL_STEPS = 3;
   const steps = [

@@ -208,7 +208,7 @@ router.get('/locations/:id/qr-code', requireAuth, requireRole(['admin']), async 
     if (!location) {
       return res.status(404).json({ message: 'Location not found.' });
     }
-    const svg = await generateLocationQr(location);
+    const svg = await generateLocationQr(location, req.query.dest);
     res.type('image/svg+xml');
     return res.send(svg);
   } catch (error) {

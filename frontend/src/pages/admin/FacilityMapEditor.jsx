@@ -465,7 +465,9 @@ export default function FacilityMapEditor() {
               if (!locationId || isDownloadingQr) return;
               setIsDownloadingQr(true);
               try {
-                await downloadLocationQr(locationId);
+                // Embed the currently selected node so the QR pre-fills it as the
+                // visitor's destination; the backend falls back to a default node.
+                await downloadLocationQr(locationId, activeNodeId);
               } catch (error) {
                 window.alert(error?.response?.data?.message || error?.message || 'Unable to download QR code.');
               } finally {
@@ -473,7 +475,7 @@ export default function FacilityMapEditor() {
               }
             }}
             disabled={!locationId || isDownloadingQr}
-            title="Download a printable QR code that auto-checks in visitors at this location"
+            title="Download a printable QR code that opens check-in pre-filled with this location and the selected destination"
             className="bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-xl transition-all font-bold flex items-center gap-2 border border-slate-300 dark:border-slate-600 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isDownloadingQr ? <Loader2 size={18} className="animate-spin" /> : <QrCode size={18} />}

@@ -1045,13 +1045,35 @@ function escapeXml(value) {
     .replace(/'/g, '&apos;');
 }
 
-async function generateLocationQr(location) {
+async function generateLocationQr(location, destNodeId) {
   // Encode a real https URL so phone cameras open the visitor portal directly,
-  // pre-filled with the location id and one-time QR token. The portal detects
-  // these query params and auto-creates a visit instead of showing the form.
+  // pre-filled with the location id, one-time QR token and a destination node.
+  // The portal pre-selects the location and that destination so a scanning
+  // visitor only has to enter their own details.
   const config = require('../config');
   const base = (config.frontendUrl || 'http://localhost:5173').replace(/\/+$/, '');
-  const url = `${base}/visit?qr=${encodeURIComponent(location.qrCodeToken)}&location=${encodeURIComponent(location.id)}`;
+
+  // Resolve which destination the QR points at: the explicitly requested node
+  // when it's a real, navigable destination (e.g. the one the admin selected in
+  // the map editor), otherwise the location's sensible default (reception /
+  // first office).
+  let destination = null;
+  const state = await getState();
+  const map = getLocationMap(state, location.id);
+  if (map) {
+    if (destNodeId) {
+      const requested = (map.nodes || []).find((node) => node.id === destNodeId);
+      // Only office nodes are real visitor destinations (matches the check-in
+      // form's destination list); anything else falls back to the default.
+      if (requested && requested.type === 'office') {
+        destination = requested;
+      }
+    }
+    if (!destination) destination = pickDefaultDestinationNode(map);
+  }
+
+  let url = `${base}/visit?qr=${encodeURIComponent(location.qrCodeToken)}&location=${encodeURIComponent(location.id)}`;
+  if (destination) url += `&dest=${encodeURIComponent(destination.id)}`;
 
   const qrSvg = await QRCode.toString(url, { type: 'svg', margin: 1 });
 
