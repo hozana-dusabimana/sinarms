@@ -640,6 +640,18 @@ export default function MapNavigationPage() {
   const upcomingRoutePositions = buildRoutePositions(map, upcomingRouteNodeIds);
   const fullRoutePositions = buildRoutePositions(map, currentVisitor.routeNodeIds);
   const liveRoutePolyline = (() => {
+    // Start the active route line at the visitor's on-route (snapped) position —
+    // the very point the blue "you are here" dot uses — and keep only what's
+    // ahead. This makes the line emanate from the visitor instead of from a
+    // node that may sit behind them (which otherwise draws a backwards tail or
+    // a start that doesn't line up with the dot).
+    if (isValidLatLng(livePosition) && fullRoutePositions.length >= 2) {
+      const tol = SNAP_TO_ROUTE_M + Math.min(40, typeof gpsAccuracy === 'number' ? gpsAccuracy : 0);
+      const clipped = clipPolylineFromPosition(fullRoutePositions, livePosition, tol);
+      if (clipped && clipped.length >= 2) return clipped;
+    }
+    // Off-route (or no full geometry): anchor the line at the raw position so it
+    // still connects to where the visitor actually is.
     const segments = [...upcomingRoutePositions];
     if (isValidLatLng(livePosition)) {
       if (segments.length === 0 || distanceMeters(livePosition, segments[0]) > 1) {
