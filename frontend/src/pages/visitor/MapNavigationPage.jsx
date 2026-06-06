@@ -157,6 +157,48 @@ function getNodeLatLng(node) {
   return null;
 }
 
+// Projects a point onto a polyline and reports how far along the line (in
+// metres) the nearest point sits, plus the line's total length. Lets us show
+// continuous travel progress from the live GPS instead of only jumping when a
+// discrete node is "reached". Uses a local equirectangular projection, which
+// is accurate at the few-hundred-metre scale of an on-site route.
+function projectDistanceAlong(point, polyline) {
+  if (!isValidLatLng(point) || !Array.isArray(polyline) || polyline.length < 2) {
+    return null;
+  }
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const lat0 = toRad(point[0]);
+  // Origin the projection at `point`, so the point itself is (0, 0).
+  const toXY = (p) => [
+    R * toRad(p[1] - point[1]) * Math.cos(lat0),
+    R * toRad(p[0] - point[0]),
+  ];
+  const pts = polyline.map(toXY);
+  let cumulative = 0;
+  let best = { dist: Infinity, along: 0 };
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [ax, ay] = pts[i];
+    const [bx, by] = pts[i + 1];
+    const abx = bx - ax;
+    const aby = by - ay;
+    const segLenSq = abx * abx + aby * aby;
+    let t = 0;
+    if (segLenSq > 0) {
+      t = Math.max(0, Math.min(1, (-ax * abx + -ay * aby) / segLenSq));
+    }
+    const projx = ax + t * abx;
+    const projy = ay + t * aby;
+    const d = Math.hypot(projx, projy);
+    const segLen = Math.sqrt(segLenSq);
+    if (d < best.dist) {
+      best = { dist: d, along: cumulative + t * segLen };
+    }
+    cumulative += segLen;
+  }
+  return { traveledM: best.along, totalM: cumulative, offRouteM: best.dist };
+}
+
 // Softens the route polyline by rounding each turn with a short quadratic
 // curve, so the line reads as a guided path rather than rigid straight chords
 // between node centres. This is purely cosmetic — it does NOT add real path
@@ -350,25 +392,29 @@ export default function MapNavigationPage() {
     const routeIds = currentVisitor.routeNodeIds || [];
     if (!mapObj || routeIds.length < 2) return;
 
+    // Widen the snap to the live GPS accuracy — phones are routinely 10-30 m
+    // off and some node coordinates are themselves approximate, so a fixed
+    // 15 m circle often never matches and the route stays stuck. Cap it so a
+    // very poor fix can't skip ahead through the whole route.
+    const radius = Math.min(40, Math.max(SNAP_RADIUS_M, gpsAccuracy || 0));
     const currentIdx = routeIds.indexOf(currentVisitor.currentNodeId);
-    // Look only at nodes ahead of the current one.
+    // Advance to the *furthest* upcoming node we're already within range of, so
+    // a GPS jump past an intermediate waypoint doesn't leave us stuck behind it.
+    let reachedNodeId = null;
     for (let i = currentIdx + 1; i < routeIds.length; i++) {
-      const nodeId = routeIds[i];
-      if (nodeId === lastAdvancedNodeRef.current) continue;
-      const node = getNode(mapObj, nodeId);
+      const node = getNode(mapObj, routeIds[i]);
       const pos = node ? getNodeLatLng(node) : null;
       if (!isValidLatLng(pos)) continue;
-      if (distanceMeters(probe, pos) <= SNAP_RADIUS_M) {
-        if (advanceInFlightRef.current) break;
-        advanceInFlightRef.current = true;
-        lastAdvancedNodeRef.current = nodeId;
-        moveVisitor(currentVisitor.id, nodeId, 'gps')
-          .catch(() => { lastAdvancedNodeRef.current = null; })
-          .finally(() => { advanceInFlightRef.current = false; });
-        break;
-      }
+      if (distanceMeters(probe, pos) <= radius) reachedNodeId = routeIds[i];
     }
-  }, [livePosition, currentVisitor?.id, currentVisitor?.currentNodeId, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state, moveVisitor]);
+    if (!reachedNodeId || reachedNodeId === lastAdvancedNodeRef.current) return;
+    if (advanceInFlightRef.current) return;
+    advanceInFlightRef.current = true;
+    lastAdvancedNodeRef.current = reachedNodeId;
+    moveVisitor(currentVisitor.id, reachedNodeId, 'gps')
+      .catch(() => { lastAdvancedNodeRef.current = null; })
+      .finally(() => { advanceInFlightRef.current = false; });
+  }, [livePosition, gpsAccuracy, currentVisitor?.id, currentVisitor?.currentNodeId, currentVisitor?.routeNodeIds, currentVisitor?.locationId, state, moveVisitor]);
 
   // Reset snap guard whenever the route changes (e.g. reroute / switch location).
   useEffect(() => {
@@ -733,14 +779,25 @@ export default function MapNavigationPage() {
   const destinationLabel = destinationNode?.label || routeFallbackNode?.label || t('visitor.nav.destination');
   const currentNodeLabel = currentNode?.label || t('visitor.nav.youAreHere');
   const totalSteps = liveSteps.length;
-  const completedSteps = liveSteps.filter((step) => step.done).length;
-  const remainingDistance = liveSteps
-    .filter((step) => !step.done)
-    .reduce((total, step) => total + (step.distance || 0), 0);
-  const progressPercent = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0;
-
   const totalRouteDistance = liveSteps.reduce((total, step) => total + (step.distance || 0), 0);
-  const completedDistance = Math.max(0, totalRouteDistance - remainingDistance);
+
+  // Continuous progress: project the live GPS onto the full route polyline so
+  // the bar climbs smoothly as the visitor walks, rather than only jumping when
+  // a node is "reached" (which makes a 2-step route read 0% until you're at
+  // Reception). Falls back to the discrete node-based estimate when there's no
+  // GPS fix yet or the visitor is still approaching the site by road.
+  const stepCompletedDistance = liveSteps
+    .filter((step) => step.done)
+    .reduce((total, step) => total + (step.distance || 0), 0);
+  const liveProjection = (!isFarFromSite && isValidLatLng(livePosition))
+    ? projectDistanceAlong(livePosition, fullRoutePositions)
+    : null;
+  const progressFraction = (liveProjection && liveProjection.totalM > 0)
+    ? Math.max(0, Math.min(1, liveProjection.traveledM / liveProjection.totalM))
+    : (totalRouteDistance > 0 ? stepCompletedDistance / totalRouteDistance : 0);
+  const progressPercent = Math.round(progressFraction * 100);
+  const completedDistance = Math.max(0, Math.min(totalRouteDistance, progressFraction * totalRouteDistance));
+  const remainingDistance = Math.max(0, totalRouteDistance - completedDistance);
   const etaMinutes = Math.max(1, Math.round(remainingDistance / 70)); // ~70m/min walking pace
   const currentStep = liveSteps.find((step) => step.current) || liveSteps.find((step) => !step.done);
   const corridorHint = currentStep?.text || t('visitor.nav.followSignage');
