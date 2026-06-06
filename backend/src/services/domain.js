@@ -719,16 +719,24 @@ async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locatio
       return draft;
     }
 
-    const route = calculateRoute(map, 'entrance', destinationNodeId);
     const nowIso = new Date().toISOString();
     const locationChanged = targetLocationId !== visitor.locationId;
+
+    // Reroute from where the visitor currently stands, not always the gate, so
+    // switching destination mid-visit (e.g. Manager Office -> Kitchen) produces
+    // a route, instructions and progress that begin at the current node. If the
+    // visitor moved to a different location the old node isn't in the new map,
+    // so fall back to that location's entrance.
+    const preferredStart = locationChanged ? 'entrance' : visitor.currentNodeId;
+    const startNodeId = getNode(map, preferredStart) ? preferredStart : 'entrance';
+    const route = calculateRoute(map, startNodeId, destinationNodeId);
 
     visitor.locationId = targetLocationId;
     visitor.destinationNodeId = destinationNodeId;
     visitor.destinationText = destinationNode.label;
     visitor.routeNodeIds = route.pathNodeIds;
     visitor.routeSteps = route.steps;
-    visitor.currentNodeId = route.pathNodeIds[0] || 'entrance';
+    visitor.currentNodeId = route.pathNodeIds[0] || startNodeId;
     visitor.lastPositionUpdateAt = nowIso;
     visitor.arrivedAt = null;
 
