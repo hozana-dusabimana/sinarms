@@ -112,6 +112,75 @@ function classifyDestination(map, text) {
   };
 }
 
+const COMPASS_POINTS = [
+  'north', 'north-east', 'east', 'south-east',
+  'south', 'south-west', 'west', 'north-west',
+];
+
+// Compass bearing (clockwise from north) of the segment between two nodes,
+// using their georeferenced schematic coordinates. Screen space has x growing
+// east and y growing south, so north is -y.
+function headingDeg(from, to) {
+  const dx = Number(to.x) - Number(from.x);
+  const dy = Number(to.y) - Number(from.y);
+  if (dx === 0 && dy === 0) {
+    return null;
+  }
+  let deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+  if (deg < 0) {
+    deg += 360;
+  }
+  return deg;
+}
+
+function compassFromHeading(deg) {
+  return COMPASS_POINTS[Math.round(deg / 45) % 8];
+}
+
+// Signed turn from one heading to the next, normalized to (-180, 180].
+// Positive means a clockwise (right) turn, negative a left turn.
+function turnDelta(prevHeading, nextHeading) {
+  let delta = nextHeading - prevHeading;
+  while (delta > 180) {
+    delta -= 360;
+  }
+  while (delta <= -180) {
+    delta += 360;
+  }
+  return delta;
+}
+
+function classifyTurn(delta) {
+  const magnitude = Math.abs(delta);
+  const side = delta > 0 ? 'right' : 'left';
+
+  if (magnitude < 25) {
+    return { direction: 'straight', verb: 'continue straight' };
+  }
+  if (magnitude < 60) {
+    return { direction: side, verb: `bear ${side}` };
+  }
+  if (magnitude < 150) {
+    return { direction: side, verb: `turn ${side}` };
+  }
+  return { direction: side, verb: 'make a U-turn' };
+}
+
+function buildInstruction({ isFirst, isLast, currentLabel, nextLabel, compass, turn }) {
+  if (isFirst || !turn) {
+    const heading = compass ? `${compass} ` : '';
+    return `Head ${heading}from ${currentLabel} to ${nextLabel}.`;
+  }
+  if (turn.direction === 'straight') {
+    return isLast
+      ? `Continue straight to arrive at ${nextLabel}.`
+      : `Continue straight toward ${nextLabel}.`;
+  }
+  return isLast
+    ? `At ${currentLabel}, ${turn.verb} to arrive at ${nextLabel}.`
+    : `At ${currentLabel}, ${turn.verb} toward ${nextLabel}.`;
+}
+
 function calculateRoute(map, fromNodeId, toNodeId) {
   const distances = new Map();
   const previous = new Map();
@@ -179,6 +248,7 @@ function calculateRoute(map, fromNodeId, toNodeId) {
 
   const steps = [];
   let totalDistanceM = 0;
+  let prevHeading = null;
 
   for (let index = 0; index < path.length - 1; index += 1) {
     const currentId = path[index];
@@ -188,20 +258,46 @@ function calculateRoute(map, fromNodeId, toNodeId) {
         (candidate.from === currentId && candidate.to === nextId) ||
         (candidate.from === nextId && candidate.to === currentId),
     );
+    const currentNode = getNode(map, currentId);
     const nextNode = getNode(map, nextId);
 
-    if (!edge || !nextNode) {
+    if (!edge || !currentNode || !nextNode) {
       continue;
     }
+
+    // Derive the instruction from the real georeferenced positions of the
+    // nodes rather than a static hint, so each leg reflects the actual
+    // heading and turn taken on the ground.
+    const heading = headingDeg(currentNode, nextNode);
+    const effectiveHeading = heading === null ? prevHeading : heading;
+    const isFirst = prevHeading === null;
+    const isLast = nextId === toNodeId;
+    const turn =
+      isFirst || prevHeading === null || effectiveHeading === null
+        ? null
+        : classifyTurn(turnDelta(prevHeading, effectiveHeading));
+
+    const instruction = buildInstruction({
+      isFirst,
+      isLast,
+      currentLabel: currentNode.label,
+      nextLabel: nextNode.label,
+      compass: effectiveHeading === null ? null : compassFromHeading(effectiveHeading),
+      turn,
+    });
 
     totalDistanceM += Number(edge.distanceM || 0);
     steps.push({
       step: index + 1,
       nodeId: nextId,
-      instruction: edge.directionHint || `Continue to ${nextNode.label}.`,
+      instruction,
       distanceM: Number(edge.distanceM || 0),
-      direction: edge.direction || 'straight',
+      direction: turn ? turn.direction : 'straight',
     });
+
+    if (effectiveHeading !== null) {
+      prevHeading = effectiveHeading;
+    }
   }
 
   return {
