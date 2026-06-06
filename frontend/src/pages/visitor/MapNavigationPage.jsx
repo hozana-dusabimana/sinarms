@@ -792,9 +792,15 @@ export default function MapNavigationPage() {
   const liveProjection = (!isFarFromSite && isValidLatLng(livePosition))
     ? projectDistanceAlong(livePosition, fullRoutePositions)
     : null;
-  const progressFraction = (liveProjection && liveProjection.totalM > 0)
-    ? Math.max(0, Math.min(1, liveProjection.traveledM / liveProjection.totalM))
-    : (totalRouteDistance > 0 ? stepCompletedDistance / totalRouteDistance : 0);
+  const stepFraction = totalRouteDistance > 0 ? stepCompletedDistance / totalRouteDistance : 0;
+  const projectionFraction = (liveProjection && liveProjection.totalM > 0)
+    ? liveProjection.traveledM / liveProjection.totalM
+    : 0;
+  // Take whichever is further along: the smooth GPS projection, or the discrete
+  // "nodes reached" count. The latter guarantees arrival reads 100% even though
+  // the projected polyline length (which follows GPS trails) differs slightly
+  // from the summed edge distances.
+  const progressFraction = Math.max(0, Math.min(1, Math.max(projectionFraction, stepFraction)));
   const progressPercent = Math.round(progressFraction * 100);
   const completedDistance = Math.max(0, Math.min(totalRouteDistance, progressFraction * totalRouteDistance));
   const remainingDistance = Math.max(0, totalRouteDistance - completedDistance);
