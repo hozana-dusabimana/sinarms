@@ -114,6 +114,7 @@ const DICTIONARY = {
     'visitor.feedback.thanksTitle': 'Thank you!',
     'visitor.feedback.thanksBody': 'Your feedback has been sent to the team. We appreciate you taking the time.',
     'visitor.feedback.backHome': 'Back to home',
+    'visitor.feedback.backToVisit': 'Back to my visit',
 
     'admin.users.assignedLocation': 'Assigned Location',
     'admin.users.selectLocation': 'Select a location...',
@@ -498,6 +499,7 @@ const DICTIONARY = {
     'visitor.feedback.thanksTitle': 'Merci !',
     'visitor.feedback.thanksBody': 'Votre avis a été transmis à l’équipe. Merci d’avoir pris le temps.',
     'visitor.feedback.backHome': 'Retour à l’accueil',
+    'visitor.feedback.backToVisit': 'Retour à ma visite',
 
     'admin.users.assignedLocation': 'Lieu attribué',
     'admin.users.selectLocation': 'Sélectionnez un lieu...',
@@ -882,6 +884,7 @@ const DICTIONARY = {
     'visitor.feedback.thanksTitle': 'Murakoze!',
     'visitor.feedback.thanksBody': 'Igitekerezo cyawe cyoherejwe ku itsinda. Turagushimiye ko wabonye umwanya.',
     'visitor.feedback.backHome': 'Subira ahabanza',
+    'visitor.feedback.backToVisit': 'Subira ku ruzinduko rwanjye',
 
     'admin.users.assignedLocation': 'Aho akorera',
     'admin.users.selectLocation': 'Hitamo aho akorera...',

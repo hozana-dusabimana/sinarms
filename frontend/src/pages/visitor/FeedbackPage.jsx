@@ -69,12 +69,29 @@ export default function FeedbackPage() {
           <p className="text-slate-500 dark:text-slate-400 font-medium mb-8">
             {t('visitor.feedback.thanksBody')}
           </p>
-          <button
-            onClick={() => navigate('/')}
-            className="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold py-3.5 rounded-xl shadow-lg transition-all"
-          >
-            {t('visitor.feedback.backHome')}
-          </button>
+          {currentVisitor ? (
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => navigate('/visit/navigate')}
+                className="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold py-3.5 rounded-xl shadow-lg transition-all"
+              >
+                {t('visitor.feedback.backToVisit')}
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="w-full text-slate-500 dark:text-slate-400 font-semibold py-2 rounded-xl hover:text-slate-800 dark:hover:text-slate-200 transition-colors text-sm"
+              >
+                {t('visitor.feedback.backHome')}
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => navigate('/')}
+              className="w-full bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold py-3.5 rounded-xl shadow-lg transition-all"
+            >
+              {t('visitor.feedback.backHome')}
+            </button>
+          )}
         </motion.div>
       </div>
     );
