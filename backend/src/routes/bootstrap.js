@@ -5,6 +5,7 @@ const {
   buildAnalytics,
   publicUser,
   scopeAlerts,
+  scopeFeedback,
   scopeNotifications,
   scopeVisitors,
 } = require('../services/domain');
@@ -56,6 +57,7 @@ router.get('/staff', requireAuth, async (req, res) => {
           : [],
       auditLog: isAdmin ? state.auditLog : [],
       notifications: scopeNotifications(state, req.user),
+      feedback: scopeFeedback(state, req.user),
     },
     analytics: isAdmin
       ? buildAnalytics(state)

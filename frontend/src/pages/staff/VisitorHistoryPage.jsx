@@ -17,6 +17,8 @@ import {
   Building2,
   WifiOff,
   Trash2,
+  Star,
+  MessageSquare,
 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -589,6 +591,44 @@ export default function VisitorHistoryPage() {
                     <p className="text-sm text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3">
                       {selected.purpose}
                     </p>
+                  </div>
+                )}
+                {selected.survey && (selected.survey.overall != null || selected.survey.comment) && (
+                  <div className="pt-2">
+                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1.5">
+                      <MessageSquare size={12} />
+                      {t('staff.history.detail.feedback')}
+                    </p>
+                    <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-3 space-y-2">
+                      {selected.survey.overall != null && (
+                        <div className="flex items-center gap-1">
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={16}
+                              strokeWidth={1.5}
+                              className={
+                                star <= Number(selected.survey.overall)
+                                  ? 'text-yellow-400 fill-yellow-400'
+                                  : 'text-slate-300 dark:text-slate-600'
+                              }
+                            />
+                          ))}
+                          <span className="ml-1.5 text-xs font-bold text-slate-500 dark:text-slate-400 tabular-nums">
+                            {Number(selected.survey.overall)}/5
+                          </span>
+                        </div>
+                      )}
+                      {selected.survey.comment ? (
+                        <p className="text-sm text-slate-700 dark:text-slate-200">
+                          “{selected.survey.comment}”
+                        </p>
+                      ) : (
+                        <p className="text-xs italic text-slate-400 dark:text-slate-500">
+                          {t('staff.history.detail.noComment')}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>

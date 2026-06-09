@@ -69,6 +69,7 @@ function ensureHydrated(state) {
   });
 
   nextState.notifications = nextState.notifications || [];
+  nextState.feedback = nextState.feedback || [];
   return refreshAlerts(nextState);
 }
 
@@ -326,6 +327,7 @@ async function loadStateFromDatabase() {
     faq,
     auditLog,
     notifications,
+    feedback,
   ] = await Promise.all([
     query('SELECT * FROM organizations ORDER BY created_at DESC'),
     query('SELECT * FROM locations ORDER BY created_at DESC'),
@@ -338,6 +340,7 @@ async function loadStateFromDatabase() {
     query('SELECT * FROM chatbot_faq ORDER BY question ASC'),
     query('SELECT * FROM audit_log ORDER BY timestamp DESC'),
     query('SELECT * FROM notifications ORDER BY created_at DESC'),
+    query('SELECT * FROM feedback ORDER BY created_at DESC'),
   ]);
 
   const maps = {};
@@ -501,6 +504,16 @@ async function loadStateFromDatabase() {
       createdAt: toIsoString(row.created_at),
       createdBy: row.created_by,
     })),
+    feedback: feedback.map((row) => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      locationId: row.location_id,
+      visitorId: row.visitor_id,
+      name: row.name || '',
+      rating: row.rating === null ? null : Number(row.rating),
+      comment: row.comment || '',
+      createdAt: toIsoString(row.created_at),
+    })),
     maps,
   });
 }
@@ -508,6 +521,7 @@ async function loadStateFromDatabase() {
 async function clearTables(connection) {
   const tables = [
     'analytics_daily',
+    'feedback',
     'notifications',
     'audit_log',
     'alerts',
@@ -766,6 +780,24 @@ async function persistState(state) {
           notification.message,
           toSqlDateTime(notification.createdAt),
           notification.createdBy,
+        ],
+      );
+    }
+
+    for (const entry of nextState.feedback || []) {
+      await connection.query(
+        `INSERT INTO feedback (
+          id, organization_id, location_id, visitor_id, name, rating, comment, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          entry.id,
+          entry.organizationId || null,
+          entry.locationId || null,
+          entry.visitorId || null,
+          entry.name || null,
+          entry.rating === null || entry.rating === undefined ? null : Number(entry.rating),
+          entry.comment || null,
+          toSqlDateTime(entry.createdAt),
         ],
       );
     }

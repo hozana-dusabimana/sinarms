@@ -14,8 +14,10 @@ import DashboardPage from './pages/staff/DashboardPage';
 import LoginPage from './pages/staff/LoginPage';
 import ProfilePage from './pages/staff/ProfilePage';
 import VisitorHistoryPage from './pages/staff/VisitorHistoryPage';
+import StaffFeedbackPage from './pages/staff/FeedbackPage';
 import CheckInPage from './pages/visitor/CheckInPage';
 import CheckoutPage from './pages/visitor/CheckoutPage';
+import FeedbackPage from './pages/visitor/FeedbackPage';
 import MapNavigationPage from './pages/visitor/MapNavigationPage';
 
 function App() {
@@ -28,6 +30,7 @@ function App() {
           <Route index element={<CheckInPage />} />
           <Route path="navigate" element={<MapNavigationPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
+          <Route path="feedback" element={<FeedbackPage />} />
         </Route>
         <Route path="/staff/login" element={<LoginPage />} />
         <Route element={<ProtectedStaffRoute />}>
@@ -36,6 +39,7 @@ function App() {
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="profile" element={<ProfilePage />} />
             <Route path="history" element={<VisitorHistoryPage />} />
+            <Route path="feedback" element={<StaffFeedbackPage />} />
             <Route path="faq" element={<FaqManagement />} />
             <Route element={<ProtectedStaffRoute adminOnly />}>
               <Route path="map-editor" element={<FacilityMapEditor />} />

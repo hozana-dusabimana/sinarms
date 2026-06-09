@@ -13,6 +13,7 @@ const organizationRoutes = require('./routes/organizations');
 const locationRoutes = require('./routes/locations');
 const mapRoutes = require('./routes/map');
 const faqRoutes = require('./routes/faq');
+const feedbackRoutes = require('./routes/feedback');
 const aiRoutes = require('./routes/ai');
 const chatbotRoutes = require('./routes/chatbot');
 const bootstrapRoutes = require('./routes/bootstrap');
@@ -55,6 +56,7 @@ function createApp() {
   app.use('/api/locations', locationRoutes);
   app.use('/api/map', mapRoutes);
   app.use('/api/faq', faqRoutes);
+  app.use('/api/feedback', feedbackRoutes);
   app.use('/api/chatbot', chatbotRoutes);
   app.use('/api/bootstrap', bootstrapRoutes);
   app.use('/api/internal', internalRoutes);

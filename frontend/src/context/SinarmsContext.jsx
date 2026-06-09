@@ -40,6 +40,7 @@ const EMPTY_STATE = {
   faq: [],
   auditLog: [],
   notifications: [],
+  feedback: [],
   maps: {},
 };
 
@@ -77,6 +78,7 @@ function normalizeState(snapshot) {
     faq: snapshot?.faq || [],
     auditLog: snapshot?.auditLog || [],
     notifications: snapshot?.notifications || [],
+    feedback: snapshot?.feedback || [],
   };
 }
 
@@ -467,6 +469,26 @@ export function SinarmsProvider({ children }) {
     }
 
     return visitor;
+  }
+
+  // Standalone feedback from the visitor portal's Feedback page. Works with or
+  // without an active visit; the backend derives the institution from the
+  // location/visitor so it lands in the right staff queue.
+  async function submitFeedback(payload) {
+    const entry = await request('/api/feedback', {
+      method: 'post',
+      data: payload,
+    });
+
+    // Keep the live state in sync for any staff session currently viewing the
+    // feedback list (visitors have no feedback in their state, so this is a no-op
+    // for them beyond returning the stored entry).
+    setState((current) => ({
+      ...current,
+      feedback: [entry, ...(current.feedback || [])],
+    }));
+
+    return entry;
   }
 
   async function acknowledgeAlert(alertId) {
@@ -879,6 +901,7 @@ export function SinarmsProvider({ children }) {
     sendHeartbeat,
     notifyDepartment,
     checkoutVisitor,
+    submitFeedback,
     acknowledgeAlert,
     deactivateAlert,
     createOrganization,

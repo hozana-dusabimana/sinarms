@@ -954,6 +954,73 @@ async function escalateUntrackedVisitors({ nowIso = new Date().toISOString() } =
   return escalatedIds.map((id) => buildVisitorResponse(nextState, id)).filter(Boolean);
 }
 
+// Standalone visitor feedback from the portal's Feedback page (distinct from the
+// check-out survey stored on the visitor row). The location is the source of
+// truth for the institution, so the org is always derived from it — never taken
+// from the client — keeping each row scoped to the right tenant. Returns the
+// stored entry, or throws a 422 when neither a rating nor a comment was given.
+async function submitFeedback({ payload }) {
+  const state = await getState();
+  const rawRating = payload && payload.rating;
+  const rating = rawRating === null || rawRating === undefined || rawRating === ''
+    ? null
+    : Math.min(5, Math.max(1, Math.round(Number(rawRating))));
+  const comment = String((payload && payload.comment) || '').trim().slice(0, 1000);
+  const name = String((payload && payload.name) || '').trim().slice(0, 255);
+
+  if (!Number.isFinite(rating) && !comment) {
+    const err = new Error('Please add a rating or a comment before sending feedback.');
+    err.status = 422;
+    err.code = 'FEEDBACK_EMPTY';
+    throw err;
+  }
+
+  const location = payload && payload.locationId
+    ? state.locations.find((entry) => entry.id === payload.locationId)
+    : null;
+  const visitor = payload && payload.visitorId
+    ? state.visitors.find((entry) => entry.id === payload.visitorId)
+    : null;
+  // Prefer the location's org; fall back to the visitor's so feedback tied only
+  // to a session is still scoped correctly.
+  const organizationId = (location && location.organizationId)
+    || (visitor && visitor.organizationId)
+    || null;
+  const locationId = (location && location.id) || (visitor && visitor.locationId) || null;
+
+  let feedbackId = null;
+  const nextState = await mutateState((draft) => {
+    feedbackId = createId('feedback');
+    draft.feedback = draft.feedback || [];
+    draft.feedback.unshift({
+      id: feedbackId,
+      organizationId,
+      locationId,
+      visitorId: visitor ? visitor.id : null,
+      name: name || (visitor ? visitor.name : '') || '',
+      rating: Number.isFinite(rating) ? rating : null,
+      comment,
+      createdAt: new Date().toISOString(),
+    });
+    return draft;
+  });
+
+  const entry = nextState.feedback.find((item) => item.id === feedbackId) || null;
+  if (entry) {
+    emit('feedback:new', entry);
+  }
+  return entry;
+}
+
+function scopeFeedback(state, user) {
+  return (state.feedback || []).filter((entry) => {
+    if (!user || user.role === 'admin') {
+      return true;
+    }
+    return entry.organizationId === user.organizationId && entry.locationId === user.locationId;
+  });
+}
+
 async function notifyDepartment({ actorUser, visitorId }) {
   let responseVisitorId = null;
 
@@ -1319,8 +1386,10 @@ module.exports = {
   rerouteVisitor,
   escalateUntrackedVisitors,
   scopeAlerts,
+  scopeFeedback,
   scopeNotifications,
   scopeVisitors,
+  submitFeedback,
   updateVisitorPosition,
   upsertUser,
 };

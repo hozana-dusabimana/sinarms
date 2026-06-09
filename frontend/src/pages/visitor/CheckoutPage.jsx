@@ -9,6 +9,7 @@ export default function CheckoutPage() {
   const navigate = useNavigate();
   const { currentVisitor, checkoutVisitor } = useSinarms();
   const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!currentVisitor) {
@@ -21,8 +22,9 @@ export default function CheckoutPage() {
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      const trimmedComment = comment.trim();
       await checkoutVisitor(currentVisitor.id, {
-        survey: { overall: rating },
+        survey: { overall: rating, comment: trimmedComment || null },
       });
       navigate('/');
     } catch (err) {
@@ -52,21 +54,38 @@ export default function CheckoutPage() {
 
         <hr className="border-slate-200 dark:border-slate-700/50 mb-8" />
 
-        <div className="mb-10">
+        <div className="mb-8">
           <h4 className="font-bold text-sm text-slate-600 dark:text-slate-300 uppercase tracking-widest mb-4">Rate your visit</h4>
           <div className="flex justify-center gap-3">
             {[1, 2, 3, 4, 5].map((star) => (
-              <motion.button 
+              <motion.button
                 key={star}
                 whileHover={{ scale: 1.2 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setRating(star)}
-                className="text-slate-300 dark:text-slate-600 hover:text-yellow-400 focus:text-yellow-400 transition-colors"
+                aria-label={`${star} star${star > 1 ? 's' : ''}`}
+                className={`transition-colors ${
+                  star <= rating
+                    ? 'text-yellow-400'
+                    : 'text-slate-300 dark:text-slate-600 hover:text-yellow-300 focus:text-yellow-300'
+                }`}
               >
                 <Star size={32} fill="currentColor" strokeWidth={1} />
               </motion.button>
             ))}
           </div>
+        </div>
+
+        <div className="mb-10 text-left">
+          <h4 className="font-bold text-sm text-slate-600 dark:text-slate-300 uppercase tracking-widest mb-3 text-center">Tell us more <span className="font-medium normal-case tracking-normal text-slate-400">(optional)</span></h4>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            maxLength={1000}
+            rows={3}
+            placeholder="Share what went well or how we can improve…"
+            className="w-full resize-none rounded-xl bg-slate-100 dark:bg-slate-800 border border-transparent focus:border-red-300 dark:focus:border-red-500/50 focus:bg-white dark:focus:bg-slate-900 outline-none p-3 text-sm font-medium text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          />
         </div>
 
         <motion.button

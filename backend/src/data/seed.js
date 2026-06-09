@@ -626,6 +626,7 @@ function createSeedState() {
       },
     ],
     notifications: [],
+    feedback: [],
     // Single Ruliba Clays campus combining all the offices documented in the
     // operational survey (see ai/README.md): Block A (administrative), Block
     // B (operations & support), Industry Area, Stock / Warehouse Area, plus

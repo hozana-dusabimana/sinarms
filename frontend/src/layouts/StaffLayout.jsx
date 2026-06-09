@@ -8,6 +8,7 @@ import {
   X,
   Users2,
   MessageSquare,
+  MessageSquareHeart,
   TerminalSquare,
   User,
   ShieldCheck,
@@ -114,6 +115,7 @@ export default function StaffLayout() {
   const allNavItems = [
     { label: t('staff.nav.dashboard'), path: '/staff/dashboard', icon: <LayoutDashboard size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
     { label: t('staff.nav.history'), path: '/staff/history', icon: <History size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
+    { label: t('staff.nav.feedback'), path: '/staff/feedback', icon: <MessageSquareHeart size={20} className="flex-shrink-0" />, roles: ['admin', 'receptionist'] },
     { label: t('staff.nav.organizations'), path: '/staff/organizations', icon: <Users size={20} className="flex-shrink-0" />, roles: ['admin'] },
     { label: t('staff.nav.analytics'), path: '/staff/analytics', icon: <Activity size={20} className="flex-shrink-0" />, roles: ['admin'] },
     { label: t('staff.nav.users'), path: '/staff/users', icon: <Users2 size={20} className="flex-shrink-0" />, roles: ['admin'] },
