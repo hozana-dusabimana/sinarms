@@ -1193,6 +1193,7 @@ export default function MapNavigationPage() {
           {/* Stats Stack */}
           <div className="flex flex-col gap-4 min-h-0">
             {/* Progress Card */}
+            {/* Commented out: progress percentage / "X of Y meters" card
             <div className="glass-card p-5 relative overflow-hidden">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400">{t('visitor.nav.progress')}</p>
               <div className="mt-1 flex items-baseline gap-1">
@@ -1209,6 +1210,7 @@ export default function MapNavigationPage() {
                 />
               </div>
             </div>
+            */}
 
             {/* ETA Card */}
             <div className="glass-card p-5">
