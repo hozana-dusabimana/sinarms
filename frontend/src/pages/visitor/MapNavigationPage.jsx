@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, MessageSquareHeart, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -886,6 +886,7 @@ export default function MapNavigationPage() {
     { key: 'route', icon: <Route size={18} />, label: t('visitor.nav.focusRoute'), onClick: handleFocusRoute },
     { key: 'chat', icon: <MessageCircle size={18} />, label: t('visitor.nav.askAssistant'), onClick: handleOpenChat },
     { key: 'alerts', icon: <Bell size={18} />, label: t('visitor.nav.alerts'), onClick: handleOpenAlerts },
+    { key: 'feedback', icon: <MessageSquareHeart size={18} />, label: t('visitor.layout.feedback'), onClick: () => navigate('/visit/feedback') },
   ];
 
   return (
