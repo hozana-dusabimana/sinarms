@@ -1053,16 +1053,16 @@ export default function MapNavigationPage() {
             ETA, with an optional Google Maps link as a fallback only. Once the
             visitor reaches the gate the on-site guided route takes over. */}
         {isFarFromSite && (
-          <div className="absolute top-4 left-4 right-16 z-[670] flex justify-center">
-            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-xl max-w-md w-full">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
-                {approachRoute ? <Navigation size={20} strokeWidth={2.2} /> : <Loader2 size={20} className="animate-spin" />}
+          <div className="absolute top-4 right-16 z-[670] w-[240px] max-w-[calc(100%-5rem)]">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-xl">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0">
+                {approachRoute ? <Navigation size={15} strokeWidth={2.2} /> : <Loader2 size={15} className="animate-spin" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                <p className="text-[11px] font-bold text-slate-900 dark:text-slate-100 truncate">
                   {t('visitor.nav.farFromSite.title', { distance: approachDistanceLabel })}
                 </p>
-                <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 leading-snug">
+                <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 leading-snug truncate">
                   {approachInfo
                     ? t('visitor.nav.farFromSite.eta', { minutes: approachInfo.durationMin })
                     : t('visitor.nav.farFromSite.subtitle')}
@@ -1074,7 +1074,7 @@ export default function MapNavigationPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   title={t('visitor.nav.farFromSite.cta')}
-                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
+                  className="text-[10px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex-shrink-0"
                 >
                   {t('visitor.nav.farFromSite.cta')}
                 </a>
