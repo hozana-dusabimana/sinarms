@@ -384,8 +384,15 @@ export default function MapNavigationPage() {
   // currentNodeId when within 15 m — that matches typical phone GPS accuracy
   // so the step list actually advances as the visitor walks the route.
   const SNAP_RADIUS_M = 15;
+  // A fix coarser than the widened snap cap below can't be evidence of reaching
+  // a *specific* waypoint: on a compact site it is "within range" of every node
+  // at once, so a stationary laptop (Wi-Fi positioning, ±100-500 m) would walk
+  // the whole route by itself. Beyond this, leave progress to the GPS
+  // projection and keep the step list where it is.
+  const MAX_SNAP_ACCURACY_M = 60;
   useEffect(() => {
     if (!currentVisitor?.id) return;
+    if (typeof gpsAccuracy === 'number' && gpsAccuracy > MAX_SNAP_ACCURACY_M) return;
     const probe = livePosition;
     if (!isValidLatLng(probe)) return;
     const mapObj = getLocationMap(state, currentVisitor.locationId);
@@ -809,7 +816,10 @@ export default function MapNavigationPage() {
   const stepCompletedDistance = liveSteps
     .filter((step) => step.done)
     .reduce((total, step) => total + (step.distance || 0), 0);
-  const liveProjection = (!isFarFromSite && isValidLatLng(livePosition))
+  // Same guard as waypoint snapping: projecting a ±100-500 m fix onto the
+  // route fakes progress on a site smaller than the error radius.
+  const isFixTooCoarse = typeof gpsAccuracy === 'number' && gpsAccuracy > MAX_SNAP_ACCURACY_M;
+  const liveProjection = (!isFarFromSite && !isFixTooCoarse && isValidLatLng(livePosition))
     ? projectDistanceAlong(livePosition, fullRoutePositions)
     : null;
   const stepFraction = totalRouteDistance > 0 ? stepCompletedDistance / totalRouteDistance : 0;
