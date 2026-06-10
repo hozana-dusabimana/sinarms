@@ -1,7 +1,7 @@
 const { mysqlAvailable } = require('./helpers/mysqlState');
 const { ensureApp, resetToSeed } = require('./helpers/testApp');
 const { mutateState } = require('../src/data/store');
-const { rerouteVisitor } = require('../src/services/domain');
+const { registerVisitor, rerouteVisitor } = require('../src/services/domain');
 
 const describeIf = mysqlAvailable() ? describe : describe.skip;
 
@@ -96,6 +96,43 @@ describeIf('domain — rerouteVisitor start node', () => {
       visitorId: 'v-reroute',
       destinationNodeId: 'manager-office',
       currentPosition: { lat: 'not-a-number', lng: null },
+    });
+
+    expect(visitor.routeNodeIds[0]).toBe('entrance');
+  });
+
+  test('self check-in with a GPS fix starts the route at the nearest node', async () => {
+    const { visitor } = await registerVisitor({
+      actorUser: null,
+      source: 'self',
+      payload: {
+        name: 'GPS Checkin',
+        idOrPhone: '0788000002',
+        destinationText: 'Manager Office',
+        destinationNodeId: 'manager-office',
+        organizationId: 'org-qonics',
+        locationId: 'loc-qonics-main',
+        gpsLat: NEAR_MEETING_ROOM.lat,
+        gpsLng: NEAR_MEETING_ROOM.lng,
+      },
+    });
+
+    expect(visitor.routeNodeIds[0]).toBe('meeting-room');
+    expect(visitor.currentNodeId).toBe('meeting-room');
+  });
+
+  test('self check-in without GPS keeps the entrance start', async () => {
+    const { visitor } = await registerVisitor({
+      actorUser: null,
+      source: 'self',
+      payload: {
+        name: 'No GPS Checkin',
+        idOrPhone: '0788000003',
+        destinationText: 'Manager Office',
+        destinationNodeId: 'manager-office',
+        organizationId: 'org-qonics',
+        locationId: 'loc-qonics-main',
+      },
     });
 
     expect(visitor.routeNodeIds[0]).toBe('entrance');

@@ -579,7 +579,15 @@ async function registerVisitor({ actorUser, payload, source }) {
 
   const nextState = await mutateState((draft) => {
     const map = getLocationMap(draft, payload.locationId);
-    const route = calculateRoute(map, 'entrance', destinationNodeId);
+    // Self check-ins can legitimately happen anywhere on site (the geofence
+    // only bounds the distance to the entrance), so start the route at the
+    // node nearest the visitor's fix rather than marching them back to the
+    // gate. No/invalid GPS — and staff-registered visitors — keep the
+    // entrance start.
+    const gpsStart = source === 'self'
+      ? nearestNodeId(map, { lat: payload.gpsLat, lng: payload.gpsLng })
+      : null;
+    const route = calculateRoute(map, gpsStart || 'entrance', destinationNodeId);
     const nowIso = new Date().toISOString();
     const visitorId = createId('visitor');
     responseVisitorId = visitorId;
@@ -610,12 +618,13 @@ async function registerVisitor({ actorUser, payload, source }) {
       survey: null,
     });
 
-    const startNode = getNode(map, 'entrance');
+    const startNodeId = route.pathNodeIds[0] || 'entrance';
+    const startNode = getNode(map, startNodeId);
     draft.visitorPositions.unshift({
       id: createId('pos'),
       visitorId,
-      zoneId: 'entrance',
-      nodeId: 'entrance',
+      zoneId: startNodeId,
+      nodeId: startNodeId,
       x: startNode ? startNode.x : 8,
       y: startNode ? startNode.y : 58,
       timestamp: nowIso,
