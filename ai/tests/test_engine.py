@@ -31,8 +31,28 @@ SAMPLE_MAP = {
 }
 
 
+# Mirrors the RP Tumba campus failure: many rooms share a generic token
+# ("lab", "department", "hostel") and the discriminating part is short
+# ("it", "7", "ii", "nb"). Node order is adversarial — the wrong generic
+# match comes first, the way the production DB returned them.
+CAMPUS_MAP = {
+    "floorplanImage": None,
+    "nodes": [
+        {"id": "entrance", "label": "Main Entrance", "aliases": ["entrance"], "type": "checkpoint", "zone": "public", "x": 0, "y": 0, "floor": 1},
+        {"id": "dc-machine-lab", "label": "DC Machine Lab", "aliases": ["dc machine lab", "dc lab"], "type": "office", "zone": "public", "x": 1, "y": 0, "floor": 1},
+        {"id": "gb-hostel", "label": "GB Hostel", "aliases": ["gb hostel", "girls hostel"], "type": "office", "zone": "public", "x": 2, "y": 0, "floor": 1},
+        {"id": "it-department", "label": "IT Department", "aliases": ["it department"], "type": "office", "zone": "public", "x": 3, "y": 0, "floor": 1},
+        {"id": "it-lab-2", "label": "IT Lab II", "aliases": ["it lab 2", "it lab ii"], "type": "office", "zone": "public", "x": 4, "y": 0, "floor": 1},
+        {"id": "it-lab-7", "label": "IT Lab 7", "aliases": ["it lab 7", "it lab seven"], "type": "office", "zone": "public", "x": 5, "y": 0, "floor": 1},
+        {"id": "nb-hostel", "label": "NB Hostel", "aliases": ["nb hostel", "boys hostel"], "type": "office", "zone": "public", "x": 6, "y": 0, "floor": 1},
+        {"id": "renewable-energy-department", "label": "Renewable Energy Department", "aliases": ["renewable energy department"], "type": "office", "zone": "public", "x": 7, "y": 0, "floor": 1},
+    ],
+    "edges": [],
+}
+
+
 def setup_module(_module) -> None:
-    state.set_maps({"loc-test": SAMPLE_MAP})
+    state.set_maps({"loc-test": SAMPLE_MAP, "loc-campus": CAMPUS_MAP})
     state.set_faq(
         [
             {
@@ -91,6 +111,36 @@ def test_classify_intent_multilingual_french() -> None:
     assert top_node == "finance-office"
 
 
+def test_classify_intent_question_mark_does_not_break_exact_match() -> None:
+    # "...IT Lab 7?" — the trailing "?" used to defeat the word-boundary
+    # substring check, dropping the query into the fuzzy path where short
+    # tokens ("it", "7") were ignored and node order picked DC Machine Lab.
+    response = client.post(
+        "/ai/classify-intent",
+        json={"text": "Where is IT Lab 7?", "locationId": "loc-campus"},
+    )
+    body = response.json()
+    assert body["status"] == "resolved"
+    assert body["destinationNodeId"] == "it-lab-7"
+
+
+def test_classify_intent_short_tokens_discriminate_similar_rooms() -> None:
+    cases = {
+        "Where is IT Lab II?": "it-lab-2",
+        "Where is NB Hostel?": "nb-hostel",
+        "Where is Renewable Energy Department?": "renewable-energy-department",
+        "Where is DC Machine Lab?": "dc-machine-lab",
+    }
+    for query, expected in cases.items():
+        response = client.post(
+            "/ai/classify-intent",
+            json={"text": query, "locationId": "loc-campus"},
+        )
+        body = response.json()
+        assert body["status"] == "resolved", f"{query!r} -> {body}"
+        assert body["destinationNodeId"] == expected, f"{query!r} -> {body}"
+
+
 def test_calculate_route_returns_dijkstra_path() -> None:
     response = client.post(
         "/ai/calculate-route",
@@ -135,5 +185,5 @@ def test_refresh_graph_replaces_maps() -> None:
     assert response.status_code == 200
     assert "loc-other" in response.json()["locations"]
     # Restore for later tests
-    state.set_maps({"loc-test": SAMPLE_MAP})
+    state.set_maps({"loc-test": SAMPLE_MAP, "loc-campus": CAMPUS_MAP})
     intent_classifier.invalidate_cache()

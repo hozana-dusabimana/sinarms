@@ -332,12 +332,20 @@ def _fuzzy_token_match(query_tokens: List[str], alias_tokens: List[str]) -> floa
     """Score an alias against the query using token-level fuzzy matches.
     Returns a score in [0, 1]: 1.0 for an exact full-alias hit, lower for
     partial / typo'd matches. Returns 0 if no meaningful overlap.
+
+    Every alias token counts toward the score. Short tokens (under 3 chars —
+    "it", "7", "ii") carry the discriminating part of names like "IT Lab 7",
+    so they must appear verbatim in the query; skipping them would make
+    "IT Lab 7", "IT Lab 2" and "DC Lab" all collapse to the same score and
+    let node iteration order pick the destination.
     """
     if not query_tokens or not alias_tokens:
         return 0.0
     matched = 0
     for atok in alias_tokens:
         if len(atok) < 3:
+            if atok in query_tokens:
+                matched += 1
             continue
         best = None
         for qtok in query_tokens:
@@ -356,7 +364,7 @@ def _fuzzy_token_match(query_tokens: List[str], alias_tokens: List[str]) -> floa
             matched += 1
     if matched == 0:
         return 0.0
-    return matched / len([t for t in alias_tokens if len(t) >= 3])
+    return matched / len(alias_tokens)
 
 
 ACRONYM_EXPANSIONS = {
@@ -400,8 +408,11 @@ def _literal_alias_match(text: str, map_graph: MapGraph) -> Optional[Dict[str, A
     fine-tuned classifier from hallucinating alternatives when the user said
     the destination name outright, and tolerates small typos via Levenshtein.
     """
-    haystack = f" {text.lower()} "
     query_tokens = _tokenize(text)
+    # Punctuation-free haystack: "Where is IT Lab 7?" must still contain the
+    # alias "it lab 7" — with raw text the trailing "?" glues onto the last
+    # word and defeats the word-boundary substring check below.
+    haystack = f" {' '.join(query_tokens)} "
     exact_best = None
     exact_best_len = 0
     fuzzy_best = None
@@ -440,21 +451,17 @@ def _literal_alias_match(text: str, map_graph: MapGraph) -> Optional[Dict[str, A
         for alias in candidates:
             if not alias:
                 continue
-            alias_norm = alias.lower().strip()
+            alias_tokens = _tokenize(alias)
+            alias_norm = " ".join(alias_tokens)
             if len(alias_norm) < 3:
                 continue
-            # Exact substring match (word boundary).
-            if (
-                f" {alias_norm} " in haystack
-                or haystack.startswith(f" {alias_norm}")
-                or haystack.endswith(f"{alias_norm} ")
-            ):
+            # Exact substring match (word boundary, punctuation-insensitive).
+            if f" {alias_norm} " in haystack:
                 if len(alias_norm) > exact_best_len:
                     exact_best_len = len(alias_norm)
                     exact_best = node
                 continue
             # Fuzzy token-level match — catches typos like "receiption".
-            alias_tokens = _tokenize(alias_norm)
             score = _fuzzy_token_match(query_tokens, alias_tokens)
             if score > fuzzy_best_score:
                 fuzzy_best_score = score
