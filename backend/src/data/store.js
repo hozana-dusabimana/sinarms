@@ -248,6 +248,55 @@ function mergeMissingSeedEntities(state) {
   return { state: nextState, changed };
 }
 
+// The RP Tumba campus has no reception desk, but earlier seeds shipped a
+// fictional "Reception" node that every route was forced through. Databases
+// seeded before that fix keep the node (mergeMissingSeedEntities only ever
+// adds), so strip it here and reroute anything that referenced it. Must run
+// AFTER mergeMissingSeedEntities so the replacement entrance→office edges
+// already exist when routes are recomputed.
+function removeTumbaReceptionDefaults(state) {
+  const locationId = 'loc-rp-tumba-main';
+  const map = state.maps && state.maps[locationId];
+
+  if (!map || !(map.nodes || []).some((node) => node.id === 'reception')) {
+    return { state, changed: false };
+  }
+
+  const nextState = clone(state);
+  const nextMap = nextState.maps[locationId];
+  nextMap.nodes = nextMap.nodes.filter((node) => node.id !== 'reception');
+  nextMap.edges = (nextMap.edges || []).filter(
+    (edge) => edge.from !== 'reception' && edge.to !== 'reception',
+  );
+
+  const fallbackDestination =
+    nextMap.nodes.find((node) => node.type === 'office') || nextMap.nodes[0];
+
+  nextState.visitors = (nextState.visitors || []).map((visitor) => {
+    if (visitor.locationId !== locationId) {
+      return visitor;
+    }
+
+    const headedToReception = visitor.destinationNodeId === 'reception';
+    const routedViaReception = (visitor.routeNodeIds || []).includes('reception');
+    if (!headedToReception && !routedViaReception) {
+      return visitor;
+    }
+
+    const destinationNodeId = headedToReception ? fallbackDestination?.id : visitor.destinationNodeId;
+    const route = calculateRoute(nextMap, 'entrance', destinationNodeId);
+    return {
+      ...visitor,
+      destinationNodeId,
+      destinationText: headedToReception ? fallbackDestination?.label : visitor.destinationText,
+      routeNodeIds: route.pathNodeIds,
+      routeSteps: route.steps,
+    };
+  });
+
+  return { state: nextState, changed: true };
+}
+
 function buildAnalyticsRows(state) {
   const buckets = new Map();
 
@@ -838,11 +887,12 @@ async function initStore() {
         const loadedState = await loadStateFromDatabase();
         const { state: cleanedState, changed: cleaned } = removeLegacyPartnerDefaults(loadedState);
         const { state: mergedState, changed } = mergeMissingSeedEntities(cleanedState);
+        const { state: finalState, changed: tumbaCleaned } = removeTumbaReceptionDefaults(mergedState);
 
-        if (cleaned || changed) {
-          await persistState(mergedState);
+        if (cleaned || changed || tumbaCleaned) {
+          await persistState(finalState);
         } else {
-          stateCache = mergedState;
+          stateCache = finalState;
         }
       }
 

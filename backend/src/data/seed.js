@@ -214,9 +214,13 @@ function createSeedState() {
   };
 
   const tumbaEntrance = { lat: -1.69560, lng: 29.91990 };
-  const tumbaReception = { lat: -1.69500, lng: 29.92010 };
 
+  // The campus has no reception desk: visitors report at the main gate and walk
+  // directly to their destination. Academic Services (registrar) is listed
+  // first so it becomes the default destination for bare QR self check-ins
+  // (pickDefaultDestinationNode falls back to the first office node).
   const tumbaOffices = [
+    { id: 'academic-services-unit', label: 'Academic Services Unit', aliases: ['academic services', 'asu', 'registrar', 'academic services unit'], lat: -1.694221, lng: 29.919891 },
     { id: 'clinic', label: 'Clinic', aliases: ['clinic', 'medical room', 'health centre', 'ivuriro'], lat: -1.694343, lng: 29.920102 },
     { id: 'server-room', label: 'Server Room', aliases: ['server room', 'data centre', 'servers'], lat: -1.694322, lng: 29.920188 },
     { id: 'it-lab-2', label: 'IT Lab II', aliases: ['it lab 2', 'it lab ii', 'it lab two'], lat: -1.694386, lng: 29.920038 },
@@ -228,7 +232,6 @@ function createSeedState() {
     { id: 'et-lab-2', label: 'ET Lab II', aliases: ['et lab 2', 'et lab ii', 'electrical lab two'], lat: -1.694300, lng: 29.919759 },
     // Source row "Examination Test Room -1694343" — missing decimal point in the survey; corrected to match the surrounding cluster.
     { id: 'examination-test-room', label: 'Examination Test Room', aliases: ['exam room', 'examination room', 'test room', 'examination test room'], lat: -1.694343, lng: 29.919887 },
-    { id: 'academic-services-unit', label: 'Academic Services Unit', aliases: ['academic services', 'asu', 'registrar', 'academic services unit'], lat: -1.694221, lng: 29.919891 },
     { id: 'renewable-energy-lab', label: 'Renewable Energy Lab', aliases: ['renewable energy lab', 're lab'], lat: -1.694199, lng: 29.919891 },
     { id: 'common-course-department', label: 'Common Course Department', aliases: ['common course', 'common course department', 'ccd'], lat: -1.694306, lng: 29.919719 },
     { id: 'network-lab', label: 'Network Lab', aliases: ['network lab', 'networking lab'], lat: -1.694242, lng: 29.919784 },
@@ -259,35 +262,20 @@ function createSeedState() {
       { id: 'entrance', label: 'Main Entrance', aliases: ['entrance', 'main gate', 'gate', 'irembo', 'site entrance'], type: 'checkpoint', zone: 'public', ...tumbaEntrance },
       tumbaOrigin,
     ),
-    geoNode(
-      { id: 'reception', label: 'Reception', aliases: ['reception', 'reception desk', 'front desk', 'accueil', 'akira abashyitsi'], type: 'office', zone: 'public', ...tumbaReception },
-      tumbaOrigin,
-    ),
     ...tumbaOffices.map((office) =>
       geoNode({ ...office, type: 'office', zone: 'public' }, tumbaOrigin),
     ),
   ];
 
-  const tumbaEdges = [
-    {
-      id: 'edge-tumba-entrance-reception',
-      from: 'entrance',
-      to: 'reception',
-      distanceM: geoDistanceM(tumbaEntrance, tumbaReception),
-      direction: 'straight',
-      directionHint: 'Walk from the main entrance to the Reception.',
-      isAccessible: true,
-    },
-    ...tumbaOffices.map((office) => ({
-      id: `edge-tumba-rec-${office.id}`,
-      from: 'reception',
-      to: office.id,
-      distanceM: geoDistanceM(tumbaReception, office),
-      direction: 'straight',
-      directionHint: `Walk from Reception to the ${office.label}.`,
-      isAccessible: true,
-    })),
-  ];
+  const tumbaEdges = tumbaOffices.map((office) => ({
+    id: `edge-tumba-ent-${office.id}`,
+    from: 'entrance',
+    to: office.id,
+    distanceM: geoDistanceM(tumbaEntrance, office),
+    direction: 'straight',
+    directionHint: `Walk from the main entrance to the ${office.label}.`,
+    isAccessible: true,
+  }));
 
   // Qonics Inc small office, georeferenced from four GPS samples taken on site.
   // Site axis runs roughly north-south: entrance at the south end, Reception
