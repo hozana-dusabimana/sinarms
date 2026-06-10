@@ -84,17 +84,19 @@ function buildState({ distanceCheckEnabled = false } = {}) {
   };
 }
 
-// Exactly what registerVisitor stores at self check-in from the main gate.
-function buildVisitor(destinationNodeId) {
-  const route = calculateRoute(tumbaMap, 'entrance', destinationNodeId);
-  expect(route.pathNodeIds[0]).toBe('entrance');
+// Exactly what registerVisitor/rerouteVisitor store: the route is computed
+// from the visitor's current node (the gate at self check-in, or wherever
+// they are when the destination changes mid-visit).
+function buildVisitor(destinationNodeId, fromNodeId = 'entrance') {
+  const route = calculateRoute(tumbaMap, fromNodeId, destinationNodeId);
+  expect(route.pathNodeIds[0]).toBe(fromNodeId);
   expect(route.pathNodeIds[route.pathNodeIds.length - 1]).toBe(destinationNodeId);
   return {
     id: 'v-tumba-sim',
     name: 'Tumba Sim Visitor',
     status: 'active',
     locationId: TUMBA_LOCATION_ID,
-    currentNodeId: 'entrance',
+    currentNodeId: fromNodeId,
     destinationNodeId,
     routeNodeIds: route.pathNodeIds,
     routeSteps: route.steps,
@@ -171,10 +173,10 @@ async function walkAndSample(from, to, { accuracy = 5, startMs = 0, stepMs = 10_
   return { readings, endMs: tMs };
 }
 
-function setupVisit(destinationNodeId, stateOpts) {
+function setupVisit(destinationNodeId, stateOpts, fromNodeId = 'entrance') {
   mockSinarms = {
     state: buildState(stateOpts),
-    currentVisitor: buildVisitor(destinationNodeId),
+    currentVisitor: buildVisitor(destinationNodeId, fromNodeId),
     isReady: true,
     setCurrentVisitor: vi.fn().mockResolvedValue(null),
     checkoutVisitor: vi.fn().mockResolvedValue(null),
@@ -278,6 +280,43 @@ describe('RP Tumba campus navigation simulation (real seeded data)', () => {
     expect(await screen.findByText(/visitor\.nav\.arrived\.title/)).toBeInTheDocument();
     // The whole walk — including the far stretch — never ended the visit.
     expect(mockSinarms.checkoutVisitor).not.toHaveBeenCalled();
+  });
+
+  it('routes Server Room -> Administrator Office directly, not as a V via the gate', async () => {
+    // Reproduces the walk from the field report: a visitor at the Server Room
+    // heading to the Administrator Office. With the old hub-and-spoke graph
+    // this routed ~229 m back through the Main Entrance and the drawn path
+    // swung on every reroute; the office mesh must make it one direct leg.
+    setupVisit('administrator-office', {}, 'server-room');
+    const visitor = mockSinarms.currentVisitor;
+    expect(visitor.routeNodeIds).toEqual(['server-room', 'administrator-office']);
+    const total = routeTotalM(visitor);
+    expect(total).toBeLessThan(120); // direct is ~95 m; the V was ~229 m
+
+    const serverRoom = nodePos('server-room');
+    const adminOffice = nodePos('administrator-office');
+
+    render(<MapNavigationPage />);
+
+    fire(serverRoom, 5, 0);
+    expect(pillMeters()).toBe(total);
+    expect(screen.getAllByText(/Head [\w-]+ from Server Room to Administrator Office\./).length).toBeGreaterThan(0);
+
+    const { readings, endMs } = await walkAndSample(serverRoom, adminOffice);
+    for (let i = 1; i < readings.length; i++) {
+      expect(readings[i]).toBeLessThanOrEqual(readings[i - 1] + 1);
+    }
+
+    fire(adminOffice, 5, endMs + 10_000);
+    fire(adminOffice, 5, endMs + 20_000);
+    fire(adminOffice, 5, endMs + 30_000);
+    await waitFor(() =>
+      expect(mockSinarms.moveVisitor).toHaveBeenCalledWith('v-tumba-sim', 'administrator-office', 'gps'),
+    );
+
+    fire(adminOffice, 5, endMs + 40_000);
+    expect(pillMeters()).toBe(0);
+    expect(await screen.findByText(/visitor\.nav\.arrived\.title/)).toBeInTheDocument();
   });
 
   it('shows no phantom progress for a stationary coarse fix at the Tumba gate', async () => {
