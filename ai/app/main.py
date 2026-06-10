@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
+import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from models import faq_matcher, intent_classifier
+from models import embeddings, faq_matcher, intent_classifier
 
 from .backend_client import fetch_faq, fetch_maps
 from .config import AI_HOST, AI_PORT
@@ -59,24 +61,42 @@ NAV_KEYWORDS = re.compile(
 NAV_USABLE_THRESHOLD = 0.45
 
 
-def _refresh_from_backend() -> None:
+def _refresh_from_backend() -> bool:
     maps = fetch_maps()
-    if maps:
-        state.set_maps(maps)
-        intent_classifier.invalidate_cache()
-        LOGGER.info("Loaded %d facility map(s) from backend.", len(maps))
-    else:
-        LOGGER.warning("Backend unreachable on startup; AI engine will serve empty state.")
+    if not maps:
+        LOGGER.warning("Backend unreachable; AI engine has no facility maps yet.")
+        return False
+
+    state.set_maps(maps)
+    intent_classifier.invalidate_cache()
+    LOGGER.info("Loaded %d facility map(s) from backend.", len(maps))
 
     faq_entries = fetch_faq()
     state.set_faq(faq_entries)
     faq_matcher.invalidate_cache()
     LOGGER.info("Loaded %d FAQ entries from backend.", len(faq_entries))
+    return True
+
+
+def _startup_warmup() -> None:
+    # On a fresh deploy this container can come up before the backend is
+    # ready; without retries it served empty state until manually restarted.
+    for _attempt in range(20):
+        if state.maps or _refresh_from_backend():
+            break
+        time.sleep(6)
+
+    # Loading the MiniLM encoder takes tens of seconds on a small host. Done
+    # lazily it lands on the first visitor query, which then exceeds the
+    # backend's AI timeout and trips its circuit breaker into offline
+    # fallback — so pay the cost here instead.
+    embeddings.get_encoder()
+    LOGGER.info("Startup warm-up complete (encoder loaded: %s).", embeddings.is_loaded())
 
 
 @app.on_event("startup")
 async def startup() -> None:
-    _refresh_from_backend()
+    threading.Thread(target=_startup_warmup, name="startup-warmup", daemon=True).start()
 
 
 @app.get("/healthz")
@@ -129,13 +149,16 @@ async def chatbot(payload: ChatbotRequest) -> Dict[str, Any]:
         ):
             cross_location = candidate
 
-    faq_result = faq_matcher.answer(query, payload.organizationId)
-    faq_conf = float(faq_result.get("confidence") or 0.0)
-
     nav_is_strong = nav_local.get("status") in {"resolved", "confirm"} and nav_conf >= NAV_USABLE_THRESHOLD
 
+    # Answer clear navigation queries without consulting the FAQ matcher —
+    # its embedding encode is the slowest part of this handler and the
+    # result would be discarded anyway.
     if nav_forced and nav_is_strong:
         return {**nav_local, "type": "navigation"}
+
+    faq_result = faq_matcher.answer(query, payload.organizationId)
+    faq_conf = float(faq_result.get("confidence") or 0.0)
 
     if nav_is_strong and nav_conf >= faq_conf:
         return {**nav_local, "type": "navigation"}
