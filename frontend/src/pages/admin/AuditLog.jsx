@@ -1,10 +1,12 @@
 import { motion } from 'framer-motion';
 import { TerminalSquare, Filter, Download, ArrowRight } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 
 export default function AuditLog() {
   const { state, exportAudit } = useSinarms();
   const logs = state.auditLog || [];
+  const pager = usePagination(logs, 15);
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -50,7 +52,7 @@ export default function AuditLog() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800/50">
-              {logs.map((log, i) => (
+              {pager.pageItems.map((log, i) => (
                 // `log.timestamp` is stored as ISO in the backend state.
                 <motion.tr 
                   initial={{ opacity: 0, x: -10 }}
@@ -77,6 +79,13 @@ export default function AuditLog() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPageChange={pager.setPage}
+          info={`${logs.length} entries`}
+          className="bg-slate-50 dark:bg-[#0b101e] font-mono"
+        />
       </div>
     </div>
   );

@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp, WifiOff, MapPinOff, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, AlertCircle, ShieldAlert, X, Clock, Map as MapIcon, Users, Activity, UserCheck, TrendingUp, WifiOff, MapPinOff } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 import { formatDurationMinutes, getLocationMap, getNode, minutesBetween } from '../../lib/sinarmsEngine';
 
 // Leaflet default icon fix
@@ -107,8 +108,6 @@ export default function DashboardPage() {
   const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState('list');
   const [institutionFilter, setInstitutionFilter] = useState('');
-  const [alertPage, setAlertPage] = useState(0);
-  const ALERTS_PER_PAGE = 5;
   const [isRegistrationModalOpen, setIsRegistrationModalOpen] = useState(false);
   const [manualName, setManualName] = useState('');
   const [manualIdOrPhone, setManualIdOrPhone] = useState('');
@@ -144,6 +143,10 @@ export default function DashboardPage() {
         return alertVisitor?.organizationId === institutionFilter;
       })
     : (activeAlerts || []);
+  // Alerts and the visitor directory can both run long, so each paginates
+  // client-side (the hook re-clamps when the lists shrink).
+  const alertsPager = usePagination(visibleAlerts, 5);
+  const directoryPager = usePagination(visibleActiveVisitors, 10);
   // A scoped staff member with no assigned location can't be tied to any
   // visitors, so every list/stat on this page is necessarily empty. Surface an
   // explicit banner instead of a silently blank dashboard that reads as "broken".
@@ -194,16 +197,6 @@ export default function DashboardPage() {
   })();
 
   const mapCenter = mapFitPositions[0] || [-1.99585, 30.04020];
-
-  // Alerts can run into the dozens, so the panel paginates. alertPageSafe
-  // re-clamps on every render so dismissing the last item on a page (which
-  // shrinks the list) doesn't leave us stranded on an empty page.
-  const alertPageCount = Math.max(1, Math.ceil(visibleAlerts.length / ALERTS_PER_PAGE));
-  const alertPageSafe = Math.min(alertPage, alertPageCount - 1);
-  const pagedAlerts = visibleAlerts.slice(
-    alertPageSafe * ALERTS_PER_PAGE,
-    alertPageSafe * ALERTS_PER_PAGE + ALERTS_PER_PAGE,
-  );
 
   function visitorStatus(visitor) {
     if (activeAlerts.some((alert) => alert.visitorId === visitor.id)) {
@@ -341,7 +334,7 @@ export default function DashboardPage() {
               {isAdmin && organizationOptions.length > 0 && (
                 <select
                   value={institutionFilter}
-                  onChange={(e) => { setInstitutionFilter(e.target.value); setAlertPage(0); }}
+                  onChange={(e) => { setInstitutionFilter(e.target.value); alertsPager.setPage(0); directoryPager.setPage(0); }}
                   title={t('staff.filter.institution')}
                   className="bg-slate-100 dark:bg-slate-800/80 border-none rounded-full px-3 py-1.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-[var(--color-brand-terracotta)] dark:text-slate-200 max-w-[9rem] sm:max-w-[13rem]"
                 >
@@ -460,7 +453,7 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                    {visibleActiveVisitors.map((visitor) => {
+                    {directoryPager.pageItems.map((visitor) => {
                       const map = getLocationMap(state, visitor.locationId);
                       const destinationNode = getNode(map, visitor.destinationNodeId);
                       const currentNode = getNode(map, visitor.currentNodeId);
@@ -520,6 +513,14 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+          {activeTab === 'list' && (
+            <Pagination
+              page={directoryPager.page}
+              pageCount={directoryPager.pageCount}
+              onPageChange={directoryPager.setPage}
+              className="relative z-10 bg-white/50 dark:bg-[#0b101e]/50"
+            />
+          )}
         </div>
 
         {/* Security Alerts Sidebar */}
@@ -542,7 +543,7 @@ export default function DashboardPage() {
                     <p className="font-bold">{t('staff.dashboard.alerts.empty')}</p>
                   </motion.div>
                 ) : (
-                  pagedAlerts.map((alert) => {
+                  alertsPager.pageItems.map((alert) => {
                     const alertVisitor = state.visitors.find((visitor) => visitor.id === alert.visitorId);
                     const visitorLabel = alertVisitor?.name || alert.visitorId;
 
@@ -583,31 +584,12 @@ export default function DashboardPage() {
               </AnimatePresence>
             </div>
 
-            {alertPageCount > 1 && (
-              <div className="px-4 py-2.5 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between relative z-10 bg-white/50 dark:bg-[#0b101e]/50">
-                <button
-                  type="button"
-                  onClick={() => setAlertPage(Math.max(0, alertPageSafe - 1))}
-                  disabled={alertPageSafe === 0}
-                  className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Previous alerts"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <span className="text-xs font-bold font-mono text-slate-500 dark:text-slate-400 tabular-nums">
-                  {alertPageSafe + 1} / {alertPageCount}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAlertPage(Math.min(alertPageCount - 1, alertPageSafe + 1))}
-                  disabled={alertPageSafe >= alertPageCount - 1}
-                  className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  aria-label="Next alerts"
-                >
-                  <ChevronRight size={18} />
-                </button>
-              </div>
-            )}
+            <Pagination
+              page={alertsPager.page}
+              pageCount={alertsPager.pageCount}
+              onPageChange={alertsPager.setPage}
+              className="relative z-10 bg-white/50 dark:bg-[#0b101e]/50"
+            />
           </div>
 
           <div className="glass-card p-5 hidden xl:block">

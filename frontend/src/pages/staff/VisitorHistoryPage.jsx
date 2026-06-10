@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 import {
   formatDateTime,
   formatDurationMinutes,
@@ -232,6 +233,14 @@ export default function VisitorHistoryPage() {
       });
   }, [enriched, range, statusFilter, orgFilter, search]);
 
+  const pager = usePagination(filtered, 10);
+  // Jump back to the first page whenever the filters change — the clamp alone
+  // would keep the user stranded mid-list when the result set is reshuffled.
+  const { setPage } = pager;
+  useEffect(() => {
+    setPage(0);
+  }, [setPage, range, statusFilter, orgFilter, search]);
+
   const stats = useMemo(() => {
     const total = filtered.length;
     const active = filtered.filter((v) => v.status === 'active').length;
@@ -441,7 +450,7 @@ export default function VisitorHistoryPage() {
                 </tr>
               )}
               {!loading &&
-                filtered.map((visitor, index) => (
+                pager.pageItems.map((visitor, index) => (
                   <motion.tr
                     key={visitor.id}
                     initial={{ opacity: 0, y: 4 }}
@@ -505,9 +514,13 @@ export default function VisitorHistoryPage() {
           </table>
         </div>
         {!loading && filtered.length > 0 && (
-          <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            {t('staff.history.showingCount', { filtered: filtered.length, total: enriched.length })}
-          </div>
+          <Pagination
+            page={pager.page}
+            pageCount={pager.pageCount}
+            onPageChange={pager.setPage}
+            info={t('staff.history.showingCount', { filtered: filtered.length, total: enriched.length })}
+            className="bg-slate-50 dark:bg-slate-900/80"
+          />
         )}
       </div>
 

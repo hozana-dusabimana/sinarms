@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { MessageSquareHeart, Star, Search, Building2, MapPin, User } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 import { formatDateTime, getLocationById, getOrganizationById } from '../../lib/sinarmsEngine';
 
 function Stars({ rating }) {
@@ -50,6 +51,12 @@ export default function FeedbackPage() {
         .includes(term),
     );
   }, [enriched, search]);
+
+  const pager = usePagination(filtered, 9);
+  const { setPage } = pager;
+  useEffect(() => {
+    setPage(0);
+  }, [setPage, search]);
 
   const avgRating = useMemo(() => {
     const rated = enriched.filter((entry) => Number(entry.rating) > 0);
@@ -112,7 +119,7 @@ export default function FeedbackPage() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((entry, index) => (
+          {pager.pageItems.map((entry, index) => (
             <motion.div
               key={entry.id}
               initial={{ opacity: 0, y: 6 }}
@@ -164,6 +171,14 @@ export default function FeedbackPage() {
             </motion.div>
           ))}
         </div>
+      )}
+      {filtered.length > 0 && (
+        <Pagination
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPageChange={pager.setPage}
+          className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/70 shadow-sm"
+        />
       )}
     </div>
   );

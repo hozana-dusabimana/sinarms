@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Edit2, Trash2, MapPin, Search, CheckCircle2, ChevronDown, X, LocateFixed, RotateCcw, Loader2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 
 export default function OrganizationSettings() {
   const navigate = useNavigate();
@@ -74,6 +75,12 @@ export default function OrganizationSettings() {
       });
   }, [expandedOrgIds, searchQuery, state.locations, state.organizations]);
 
+  const pager = usePagination(orgs, 6);
+  const { setPage } = pager;
+  useEffect(() => {
+    setPage(0);
+  }, [setPage, searchQuery]);
+
   return (
     <div className="flex flex-col h-full space-y-6">
       <div className="flex items-center justify-between">
@@ -126,7 +133,7 @@ export default function OrganizationSettings() {
         {/* List */}
         <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-[#0b101e]">
           <div className="p-4 space-y-4 max-w-5xl mx-auto custom-scrollbar">
-            {orgs.map((org) => (
+            {pager.pageItems.map((org) => (
               <motion.div 
                 key={org.id}
                 layout
@@ -245,6 +252,12 @@ export default function OrganizationSettings() {
             ))}
           </div>
         </div>
+        <Pagination
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPageChange={pager.setPage}
+          className="bg-slate-50/80 dark:bg-slate-900/80"
+        />
       </div>
 
       {/* Organization Modal */}

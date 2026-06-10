@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Plus, Edit2, Trash2, Search, X, Languages, Building2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 
 export default function FaqManagement() {
   const { state, currentUser, createFaq, updateFaq, deleteFaq } = useSinarms();
@@ -21,6 +22,7 @@ export default function FaqManagement() {
     ? (state.faq || [])
     : (state.faq || []).filter((faq) => !faq.organizationId || faq.organizationId === myOrgId);
   const canManage = (faq) => isAdmin || (!!faq.organizationId && faq.organizationId === myOrgId);
+  const pager = usePagination(faqs, 6);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState(null);
 
@@ -65,7 +67,7 @@ export default function FaqManagement() {
 
         <div className="flex-1 overflow-auto bg-slate-50/30 dark:bg-[#0b101e]">
           <div className="p-4 space-y-4 max-w-5xl mx-auto custom-scrollbar">
-            {faqs.map((faq) => (
+            {pager.pageItems.map((faq) => (
               <motion.div 
                 key={faq.id}
                 layout
@@ -124,6 +126,12 @@ export default function FaqManagement() {
             ))}
           </div>
         </div>
+        <Pagination
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPageChange={pager.setPage}
+          className="bg-slate-50/80 dark:bg-slate-900/80"
+        />
       </div>
 
       {/* Add/Edit Modal */}

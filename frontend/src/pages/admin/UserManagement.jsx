@@ -3,11 +3,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Plus, Edit2, Trash2, Shield, Search, X, RotateCcw } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 import { useLanguage } from '../../context/LanguageContext';
+import Pagination, { usePagination } from '../../components/common/Pagination';
 
 export default function UserManagement() {
   const { state, createUser, updateUser, deactivateUser } = useSinarms();
   const { t } = useLanguage();
   const users = state.users || [];
+  const pager = usePagination(users, 10);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [userName, setUserName] = useState('');
@@ -100,7 +102,7 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-              {users.map((u) => {
+              {pager.pageItems.map((u) => {
                 const roleLabel = u.role === 'admin' ? 'Admin' : 'Receptionist';
                 const locationLabel =
                   u.role === 'admin'
@@ -165,6 +167,12 @@ export default function UserManagement() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={pager.page}
+          pageCount={pager.pageCount}
+          onPageChange={pager.setPage}
+          className="bg-slate-50/80 dark:bg-slate-900/80"
+        />
       </div>
 
       {/* Add User Modal */}
