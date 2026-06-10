@@ -110,6 +110,118 @@ At runtime the classifier has three tiers, so the service always answers:
 
 ---
 
+## How PyTorch works (plain-language explainer)
+
+PyTorch is the machine-learning toolkit we used to train and run the intent
+classifier. It doesn't know anything about our project — it provides the
+machinery for building a model, teaching it, and using it. If the classifier
+is a student learning to recognize destinations, PyTorch is the school: the
+classroom, the textbooks, the grading system, and the method for correcting
+mistakes.
+
+### Weights ("dials") — where the knowledge lives
+
+A neural network is a giant math formula with millions of adjustable numbers
+called **weights** (think of them as dials on a radio). The model stores no
+rules, sentences, or facts — its entire knowledge is just the positions of
+its dials. Our classifier has ~135 million of them. The files saved to
+`artifacts/intent_model/` are essentially a giant list of dial positions,
+nothing else.
+
+### Predictions ("guesses") — how the model answers
+
+Feeding an input through the model always produces an answer computed from
+the current dial positions — this is a **prediction** (the *forward pass*).
+An untrained model answers too; it just answers badly. For our classifier, a
+prediction is a score for every destination ("Principal's Office: 0.91,
+HR Office: 0.05, …") — the top score is the answer, and that score **is the
+confidence number** the rest of the system uses for its thresholds.
+
+### Training — the learning loop
+
+Training works like flashcard practice with a tutor. For each example:
+
+1. **Guess** — show the model a sentence ("Where is the HR office?") and let
+   it answer with its current dials.
+2. **Measure the mistake** — compare the guess to the known correct answer
+   (`hr_office_104`). The gap is a single number called the **loss**.
+3. **Trace the blame backward** — *backpropagation*, PyTorch's superpower:
+   it automatically works out, for every one of the millions of dials,
+   whether it should go up or down to shrink the mistake
+   (`loss.backward()`).
+4. **Nudge the dials** — the optimizer (AdamW) turns each dial a tiny amount
+   in that direction (`optimizer.step()`). The learning rate (5e-5) keeps
+   the nudges small so learning is steady.
+5. **Repeat thousands of times** — ~6,000 examples, in batches of 16, for
+   3 full passes (epochs). The loss drops each epoch; that's how we know
+   it's learning.
+
+The model learns by being wrong *out loud*: no guess → no measurable mistake
+→ nothing to learn from. After deployment, the same prediction step with
+frozen dials is called **inference** — the model answers without learning
+anymore.
+
+### The smallest possible example
+
+We teach a one-dial model the hidden rule "the answer is the input × 2",
+showing it only examples (1→2, 2→4, 3→6, 4→8), never the rule itself:
+
+```python
+import torch
+
+inputs  = torch.tensor([[1.0], [2.0], [3.0], [4.0]])   # flashcards
+answers = torch.tensor([[2.0], [4.0], [6.0], [8.0]])   # correct answers
+
+model = torch.nn.Linear(1, 1, bias=False)               # one random dial
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+loss_fn = torch.nn.MSELoss()
+
+for step in range(60):
+    guess = model(inputs)               # 1. let it guess
+    loss = loss_fn(guess, answers)      # 2. how wrong was it?
+    optimizer.zero_grad()
+    loss.backward()                     # 3. trace the blame backward
+    optimizer.step()                    # 4. nudge the dial
+```
+
+Actual output from running this:
+
+```
+Before training, the dial is at -0.301 -> it thinks 10 x dial = -3.01 (wrong)
+step 10: mistake = 2.13028, dial is now 1.5470
+step 20: mistake = 0.08257, dial is now 1.9108
+step 40: mistake = 0.00012, dial is now 1.9965
+step 60: mistake = 0.00000, dial is now 1.9999
+After training: 10 -> 20.00, and for unseen input 7 -> 14.00
+```
+
+The dial converges to 2 — the model *discovered* the rule from examples. And
+it answers correctly for **7, a number it never saw**: it learned the rule,
+not the flashcards. That generalization is the whole point of training.
+
+### Mapping the toy example to our classifier
+
+| Toy demo | Our intent classifier |
+|---|---|
+| 1 dial | ~135 million dials (DistilBERT's weights) |
+| 4 flashcards (1→2, 2→4, …) | ~6,000 flashcards ("Where is HR?" → `hr_office_104`) |
+| Hidden rule: "multiply by 2" | Hidden rule: "this phrasing means this destination" |
+| 60 nudge steps | ~1,000 steps (3 epochs × batches of 16) |
+| Tested on unseen number 7 | Tested on the 10% held-out sentences (≥88% target) |
+| Dial saved as 1.9999 | Dials saved to `artifacts/intent_model/` |
+
+The training loop in
+[`training/train_intent.py`](training/train_intent.py) has the very same
+four lines doing the very same four jobs — guess (`model(**batch)`), measure
+(`outputs.loss`), blame (`loss.backward()`), nudge (`optimizer.step()`).
+
+PyTorch is used **only by the intent classifier** (training it and running
+it). The FAQ matcher uses a sentence-encoder library on top, the route
+calculator is pure graph math (NetworkX), and the orchestrator is ordinary
+decision logic — no PyTorch there.
+
+---
+
 ## Model 2 — FAQ Matcher (semantic search we engineered)
 
 **Job:** answer general visitor questions ("What time do you open?") from the
