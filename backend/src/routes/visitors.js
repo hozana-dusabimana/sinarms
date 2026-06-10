@@ -118,6 +118,7 @@ router.post('/:id/reroute', async (req, res) => {
     visitorId: req.params.id,
     destinationNodeId,
     locationId: req.body && req.body.locationId,
+    currentPosition: req.body && req.body.currentPosition,
   });
 
   if (!visitor) {

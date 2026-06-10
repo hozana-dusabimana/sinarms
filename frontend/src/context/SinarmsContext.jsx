@@ -406,11 +406,11 @@ export function SinarmsProvider({ children }) {
     return moveVisitor(visitorId, null, 'wifi');
   }
 
-  async function rerouteVisitor(visitorId, { destinationNodeId, locationId } = {}) {
+  async function rerouteVisitor(visitorId, { destinationNodeId, locationId, currentPosition } = {}) {
     if (!visitorId || !destinationNodeId) return null;
     const visitor = await request(`/api/visitors/${visitorId}/reroute`, {
       method: 'post',
-      data: { destinationNodeId, locationId },
+      data: { destinationNodeId, locationId, currentPosition },
     });
 
     setState((current) => ({

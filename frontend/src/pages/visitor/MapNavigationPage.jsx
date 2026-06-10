@@ -395,8 +395,10 @@ export default function MapNavigationPage() {
     // Widen the snap to the live GPS accuracy — phones are routinely 10-30 m
     // off and some node coordinates are themselves approximate, so a fixed
     // 15 m circle often never matches and the route stays stuck. Cap it so a
-    // very poor fix can't skip ahead through the whole route.
-    const radius = Math.min(40, Math.max(SNAP_RADIUS_M, gpsAccuracy || 0));
+    // very poor fix can't skip ahead through the whole route — but keep the
+    // cap above typical urban GPS drift (~40-50 m), since some sites' whole
+    // node graph fits inside that error and a tighter cap never matches.
+    const radius = Math.min(60, Math.max(SNAP_RADIUS_M, gpsAccuracy || 0));
     const currentIdx = routeIds.indexOf(currentVisitor.currentNodeId);
     // Advance to the *furthest* upcoming node we're already within range of, so
     // a GPS jump past an intermediate waypoint doesn't leave us stuck behind it.
@@ -1291,6 +1293,7 @@ export default function MapNavigationPage() {
         locationId={currentVisitor?.locationId}
         open={isChatOpen}
         onOpenChange={setIsChatOpen}
+        livePosition={livePosition}
       />
 
       {/* Alerts & Info Modal */}

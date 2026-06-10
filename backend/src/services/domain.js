@@ -703,7 +703,32 @@ async function updateVisitorPosition({ actorUser, visitorId, nodeId, source }) {
   return visitor;
 }
 
-async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locationId }) {
+// A live GPS fix further than this from every node is ignored as a route
+// origin — the visitor is effectively off-map, so the tracked node is a
+// better guess than whatever node happens to be least far away.
+const REROUTE_NEAREST_NODE_MAX_M = 150;
+
+function nearestNodeId(map, position) {
+  const lat = Number(position && position.lat);
+  const lng = Number(position && position.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  let bestId = null;
+  let bestDistM = Infinity;
+  for (const node of map.nodes) {
+    const distM = distanceMeters({ lat, lng }, node);
+    if (distM < bestDistM) {
+      bestId = node.id;
+      bestDistM = distM;
+    }
+  }
+
+  return bestDistM <= REROUTE_NEAREST_NODE_MAX_M ? bestId : null;
+}
+
+async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locationId, currentPosition }) {
   let updatedId = null;
 
   const nextState = await mutateState((draft) => {
@@ -724,10 +749,14 @@ async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locatio
 
     // Reroute from where the visitor currently stands, not always the gate, so
     // switching destination mid-visit (e.g. Manager Office -> Kitchen) produces
-    // a route, instructions and progress that begin at the current node. If the
-    // visitor moved to a different location the old node isn't in the new map,
-    // so fall back to that location's entrance.
-    const preferredStart = locationChanged ? 'entrance' : visitor.currentNodeId;
+    // a route, instructions and progress that begin at the current node. The
+    // tracked currentNodeId goes stale when GPS drift keeps the step-advance
+    // snap from ever firing (typical on small sites whose whole node graph fits
+    // inside GPS error), so prefer the node nearest the live fix when the
+    // client sent one. If the visitor moved to a different location neither
+    // applies — fall back to that location's entrance.
+    const gpsStart = locationChanged ? null : nearestNodeId(map, currentPosition);
+    const preferredStart = gpsStart || (locationChanged ? 'entrance' : visitor.currentNodeId);
     const startNodeId = getNode(map, preferredStart) ? preferredStart : 'entrance';
     const route = calculateRoute(map, startNodeId, destinationNodeId);
 

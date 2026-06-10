@@ -3,8 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Send, Bot, Mic, MicOff, Navigation2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
-export default function AIChatbot({ organizationId, locationId, open, onOpenChange, hideLauncher = false } = {}) {
+export default function AIChatbot({ organizationId, locationId, open, onOpenChange, hideLauncher = false, livePosition = null } = {}) {
   const { sendChatbotQuery, rerouteVisitor, currentVisitor } = useSinarms();
+  // Live GPS as a { lat, lng } reroute origin, so the backend can start the new
+  // route from where the visitor actually stands instead of a stale tracked node.
+  const currentPosition =
+    Array.isArray(livePosition) && Number.isFinite(livePosition[0]) && Number.isFinite(livePosition[1])
+      ? { lat: livePosition[0], lng: livePosition[1] }
+      : undefined;
   const isControlled = typeof open === 'boolean' && typeof onOpenChange === 'function';
   const [internalOpen, setInternalOpen] = useState(false);
   const isOpen = isControlled ? open : internalOpen;
@@ -92,6 +98,7 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
           await rerouteVisitor(currentVisitor.id, {
             destinationNodeId: response.destinationNodeId,
             locationId: response.locationId || locationId,
+            currentPosition,
           });
           setMessages(prev => [
             ...prev,
@@ -129,6 +136,7 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
       await rerouteVisitor(currentVisitor.id, {
         destinationNodeId: action.destinationNodeId,
         locationId: action.locationId,
+        currentPosition,
       });
       const confirmation = action.kind === 'switch-location'
         ? `Switched to ${action.locationName || 'the new location'}. Follow the highlighted route to ${action.destinationLabel || 'your destination'}.`
