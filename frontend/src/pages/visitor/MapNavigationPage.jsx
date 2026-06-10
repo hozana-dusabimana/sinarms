@@ -399,6 +399,11 @@ export default function MapNavigationPage() {
     // cap above typical urban GPS drift (~40-50 m), since some sites' whole
     // node graph fits inside that error and a tighter cap never matches.
     const radius = Math.min(60, Math.max(SNAP_RADIUS_M, gpsAccuracy || 0));
+    // The destination is different: skipping an intermediate waypoint is
+    // harmless, but the drift-widened radius declaring ARRIVAL is a false
+    // celebration — on a small site one bad fix is "within range" of every
+    // node at once. Reaching the final node demands genuine proximity.
+    const destRadius = SNAP_RADIUS_M;
     const currentIdx = routeIds.indexOf(currentVisitor.currentNodeId);
     // Advance to the *furthest* upcoming node we're already within range of, so
     // a GPS jump past an intermediate waypoint doesn't leave us stuck behind it.
@@ -407,7 +412,8 @@ export default function MapNavigationPage() {
       const node = getNode(mapObj, routeIds[i]);
       const pos = node ? getNodeLatLng(node) : null;
       if (!isValidLatLng(pos)) continue;
-      if (distanceMeters(probe, pos) <= radius) reachedNodeId = routeIds[i];
+      const limit = i === routeIds.length - 1 ? destRadius : radius;
+      if (distanceMeters(probe, pos) <= limit) reachedNodeId = routeIds[i];
     }
     if (!reachedNodeId || reachedNodeId === lastAdvancedNodeRef.current) return;
     if (advanceInFlightRef.current) return;

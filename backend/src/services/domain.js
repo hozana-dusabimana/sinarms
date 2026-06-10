@@ -585,7 +585,7 @@ async function registerVisitor({ actorUser, payload, source }) {
     // gate. No/invalid GPS — and staff-registered visitors — keep the
     // entrance start.
     const gpsStart = source === 'self'
-      ? nearestNodeId(map, { lat: payload.gpsLat, lng: payload.gpsLng })
+      ? nearestNodeId(map, { lat: payload.gpsLat, lng: payload.gpsLng }, destinationNodeId)
       : null;
     const route = calculateRoute(map, gpsStart || 'entrance', destinationNodeId);
     const nowIso = new Date().toISOString();
@@ -717,7 +717,12 @@ async function updateVisitorPosition({ actorUser, visitorId, nodeId, source }) {
 // better guess than whatever node happens to be least far away.
 const REROUTE_NEAREST_NODE_MAX_M = 150;
 
-function nearestNodeId(map, position) {
+// excludeNodeId keeps a route from starting at its own destination: GPS drift
+// can make the destination the nearest node even though the visitor hasn't
+// reached it, which would declare arrival the moment the route is created.
+// Starting one node away costs a genuinely-arrived visitor a single trivial
+// step; a false instant arrival costs trust in the whole tracker.
+function nearestNodeId(map, position, excludeNodeId) {
   const lat = Number(position && position.lat);
   const lng = Number(position && position.lng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
@@ -727,6 +732,7 @@ function nearestNodeId(map, position) {
   let bestId = null;
   let bestDistM = Infinity;
   for (const node of map.nodes) {
+    if (node.id === excludeNodeId) continue;
     const distM = distanceMeters({ lat, lng }, node);
     if (distM < bestDistM) {
       bestId = node.id;
@@ -764,7 +770,7 @@ async function rerouteVisitor({ actorUser, visitorId, destinationNodeId, locatio
     // inside GPS error), so prefer the node nearest the live fix when the
     // client sent one. If the visitor moved to a different location neither
     // applies — fall back to that location's entrance.
-    const gpsStart = locationChanged ? null : nearestNodeId(map, currentPosition);
+    const gpsStart = locationChanged ? null : nearestNodeId(map, currentPosition, destinationNodeId);
     const preferredStart = gpsStart || (locationChanged ? 'entrance' : visitor.currentNodeId);
     const startNodeId = getNode(map, preferredStart) ? preferredStart : 'entrance';
     const route = calculateRoute(map, startNodeId, destinationNodeId);

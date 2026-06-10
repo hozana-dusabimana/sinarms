@@ -121,6 +121,40 @@ describeIf('domain — rerouteVisitor start node', () => {
     expect(visitor.currentNodeId).toBe('meeting-room');
   });
 
+  test('a fix nearest the destination itself never produces an instant arrival', async () => {
+    // Fix right on the manager-office node: without the destination exclusion
+    // the route would be a single node and arrival would fire the moment the
+    // route is created.
+    const MANAGER_OFFICE = { lat: -1.929630, lng: 30.070359 };
+
+    const rerouted = await rerouteVisitor({
+      actorUser: null,
+      visitorId: 'v-reroute',
+      destinationNodeId: 'manager-office',
+      currentPosition: MANAGER_OFFICE,
+    });
+    expect(rerouted.routeNodeIds.length).toBeGreaterThanOrEqual(2);
+    expect(rerouted.currentNodeId).not.toBe('manager-office');
+    expect(rerouted.routeNodeIds[rerouted.routeNodeIds.length - 1]).toBe('manager-office');
+
+    const { visitor: checkedIn } = await registerVisitor({
+      actorUser: null,
+      source: 'self',
+      payload: {
+        name: 'At Destination Checkin',
+        idOrPhone: '0788000005',
+        destinationText: 'Manager Office',
+        destinationNodeId: 'manager-office',
+        organizationId: 'org-qonics',
+        locationId: 'loc-qonics-main',
+        gpsLat: MANAGER_OFFICE.lat,
+        gpsLng: MANAGER_OFFICE.lng,
+      },
+    });
+    expect(checkedIn.routeNodeIds.length).toBeGreaterThanOrEqual(2);
+    expect(checkedIn.currentNodeId).not.toBe('manager-office');
+  });
+
   test('self check-in without GPS keeps the entrance start', async () => {
     const { visitor } = await registerVisitor({
       actorUser: null,
