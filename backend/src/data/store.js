@@ -188,59 +188,14 @@ function mergeMissingSeedEntities(state) {
     }
   });
 
+  // Maps already in the database are authoritative: the admin curates nodes
+  // and paths in the Facility Map Editor (moving, renaming and deleting
+  // them), so the seed must never be merged back into an existing map — it
+  // used to resurrect deleted nodes/edges on every restart. Only seed a map
+  // when the location has none at all.
   Object.entries(seedState.maps || {}).forEach(([locationId, seedMap]) => {
-    const existingMap = nextState.maps[locationId];
-
-    if (!existingMap) {
+    if (!nextState.maps[locationId]) {
       nextState.maps[locationId] = clone(seedMap);
-      changed = true;
-      return;
-    }
-
-    existingMap.nodes = existingMap.nodes || [];
-    existingMap.edges = existingMap.edges || [];
-
-    const seedNodeById = Object.fromEntries((seedMap.nodes || []).map((n) => [n.id, n]));
-    const existingNodeIds = new Set(existingMap.nodes.map((node) => node.id));
-    (seedMap.nodes || []).forEach((node) => {
-      if (!existingNodeIds.has(node.id)) {
-        existingMap.nodes.push(clone(node));
-        existingNodeIds.add(node.id);
-        changed = true;
-      }
-    });
-
-    existingMap.nodes.forEach((node) => {
-      const seedNode = seedNodeById[node.id];
-      if (!seedNode) return;
-      if ((node.lat == null || node.lng == null) && seedNode.lat != null && seedNode.lng != null) {
-        node.lat = seedNode.lat;
-        node.lng = seedNode.lng;
-        changed = true;
-      }
-    });
-
-    const seedEdgeById = Object.fromEntries((seedMap.edges || []).map((e) => [e.id, e]));
-    const existingEdgeIds = new Set(existingMap.edges.map((edge) => edge.id));
-    (seedMap.edges || []).forEach((edge) => {
-      if (!existingEdgeIds.has(edge.id)) {
-        existingMap.edges.push(clone(edge));
-        existingEdgeIds.add(edge.id);
-        changed = true;
-      }
-    });
-
-    existingMap.edges.forEach((edge) => {
-      const seedEdge = seedEdgeById[edge.id];
-      if (!seedEdge) return;
-      if ((!edge.gpsTrail || edge.gpsTrail.length < 2) && seedEdge.gpsTrail) {
-        edge.gpsTrail = clone(seedEdge.gpsTrail);
-        changed = true;
-      }
-    });
-
-    if (!existingMap.floorplanImage && seedMap.floorplanImage) {
-      existingMap.floorplanImage = seedMap.floorplanImage;
       changed = true;
     }
   });
