@@ -297,6 +297,27 @@ function removeTumbaReceptionDefaults(state) {
   return { state: nextState, changed: true };
 }
 
+// The RP Tumba campus no longer ships predefined paths — the admin records
+// real GPS trails in the Facility Map Editor instead. Databases seeded before
+// this change still hold the auto-generated entrance-spoke / office-mesh
+// edges (mergeMissingSeedEntities only ever adds), so strip everything with
+// the seeded `edge-tumba-` id prefix. Admin-recorded edges use `from-to` ids
+// and are kept.
+function removeTumbaSeedEdges(state) {
+  const locationId = 'loc-rp-tumba-main';
+  const map = state.maps && state.maps[locationId];
+  const isSeedEdge = (edge) => String(edge.id || '').startsWith('edge-tumba-');
+
+  if (!map || !(map.edges || []).some(isSeedEdge)) {
+    return { state, changed: false };
+  }
+
+  const nextState = clone(state);
+  const nextMap = nextState.maps[locationId];
+  nextMap.edges = (nextMap.edges || []).filter((edge) => !isSeedEdge(edge));
+  return { state: nextState, changed: true };
+}
+
 function buildAnalyticsRows(state) {
   const buckets = new Map();
 
@@ -887,9 +908,10 @@ async function initStore() {
         const loadedState = await loadStateFromDatabase();
         const { state: cleanedState, changed: cleaned } = removeLegacyPartnerDefaults(loadedState);
         const { state: mergedState, changed } = mergeMissingSeedEntities(cleanedState);
-        const { state: finalState, changed: tumbaCleaned } = removeTumbaReceptionDefaults(mergedState);
+        const { state: receptionCleanedState, changed: tumbaCleaned } = removeTumbaReceptionDefaults(mergedState);
+        const { state: finalState, changed: tumbaEdgesCleaned } = removeTumbaSeedEdges(receptionCleanedState);
 
-        if (cleaned || changed || tumbaCleaned) {
+        if (cleaned || changed || tumbaCleaned || tumbaEdgesCleaned) {
           await persistState(finalState);
         } else {
           stateCache = finalState;

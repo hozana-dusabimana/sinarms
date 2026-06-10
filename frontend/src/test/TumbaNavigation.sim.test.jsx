@@ -4,9 +4,11 @@ import { distanceMeters } from '../lib/geo';
 
 // RP Tumba campus walking simulator. Unlike MapNavigation.sim.test.jsx (which
 // uses a synthetic 3-node site), this renders MapNavigationPage against the
-// REAL seeded campus — the same nodes, coordinates, edges and instructions the
-// production database serves — and walks a simulated visitor across it at
-// pedestrian speed with phone-grade GPS. It verifies the whole visitor-facing
+// REAL seeded campus nodes and coordinates, and walks a simulated visitor
+// across them at pedestrian speed with phone-grade GPS. The production seed
+// ships the campus with no paths (the admin records GPS trails in the
+// Facility Map Editor), so the test wires the direct-line graph an admin
+// would record on this open outdoor site. It verifies the whole visitor-facing
 // loop: where the route starts, the instruction text, the remaining-distance
 // pill counting down monotonically with movement, no premature arrival, the
 // arrival announcement at the destination, and (for the longest walk on
@@ -64,6 +66,24 @@ import MapNavigationPage from '../pages/visitor/MapNavigationPage';
 const TUMBA_LOCATION_ID = 'loc-rp-tumba-main';
 const seed = createSeedState();
 const tumbaMap = seed.maps[TUMBA_LOCATION_ID];
+
+// The seed ships the campus with no paths; wire the full direct-line mesh an
+// admin would record between the real seeded nodes so routes are computable.
+// Distances are rounded like seed.js's geoDistanceM so step sums stay integral.
+for (let i = 0; i < tumbaMap.nodes.length; i += 1) {
+  for (let j = i + 1; j < tumbaMap.nodes.length; j += 1) {
+    const a = tumbaMap.nodes[i];
+    const b = tumbaMap.nodes[j];
+    tumbaMap.edges.push({
+      id: `${a.id}--${b.id}`,
+      from: a.id,
+      to: b.id,
+      distanceM: Math.max(1, Math.round(distanceMeters([a.lat, a.lng], [b.lat, b.lng]))),
+      direction: 'straight',
+      isAccessible: true,
+    });
+  }
+}
 const tumbaOrg = seed.organizations.find((o) => o.id === 'org-rp-tumba');
 const tumbaLocation = seed.locations.find((l) => l.id === TUMBA_LOCATION_ID);
 

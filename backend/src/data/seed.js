@@ -267,41 +267,14 @@ function createSeedState() {
     ),
   ];
 
-  // The campus is an open outdoor site: visitors walk straight between any
-  // two buildings. A hub-and-spoke graph (every office wired only to the
-  // gate) routed Server Room -> Administrator Office as a V via the Main
-  // Entrance, and every GPS-nearest-node reroute redrew that V from a new
-  // corner — the path visibly swung while the visitor barely moved. A full
-  // office mesh makes every route the direct line the visitor actually walks.
-  // The entrance spokes keep their original ids so databases seeded before
-  // the mesh don't gain duplicates (mergeMissingSeedEntities only ever adds).
-  const tumbaEdges = tumbaOffices.map((office) => ({
-    id: `edge-tumba-ent-${office.id}`,
-    from: 'entrance',
-    to: office.id,
-    distanceM: geoDistanceM(tumbaEntrance, office),
-    direction: 'straight',
-    directionHint: `Walk from the main entrance to the ${office.label}.`,
-    isAccessible: true,
-  }));
-  // map_edges.id is VARCHAR(64); clamp each node id so the longest pair
-  // ("academic-services-unit" + "office-of-department-principal") still fits.
-  const edgeIdPart = (nodeId) => nodeId.slice(0, 24);
-  for (let i = 0; i < tumbaOffices.length; i += 1) {
-    for (let j = i + 1; j < tumbaOffices.length; j += 1) {
-      const a = tumbaOffices[i];
-      const b = tumbaOffices[j];
-      tumbaEdges.push({
-        id: `edge-tumba-${edgeIdPart(a.id)}--${edgeIdPart(b.id)}`,
-        from: a.id,
-        to: b.id,
-        distanceM: geoDistanceM(a, b),
-        direction: 'straight',
-        directionHint: `Walk from the ${a.label} to the ${b.label}.`,
-        isAccessible: true,
-      });
-    }
-  }
+  // The campus ships with NO predefined paths. Earlier seeds auto-generated
+  // an entrance-spoke / full-office-mesh graph, but with every building
+  // clustered in one corner the mesh rendered as a tangle of overlapping
+  // lines on the map. Paths are now recorded by the admin in the Facility
+  // Map Editor (which captures real GPS trails); removeTumbaSeedEdges in
+  // store.js strips the old auto-generated edges from databases seeded
+  // before this change.
+  const tumbaEdges = [];
 
   // Qonics Inc small office, georeferenced from four GPS samples taken on site.
   // Site axis runs roughly north-south: entrance at the south end, Reception
