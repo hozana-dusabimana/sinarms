@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Building2, Plus, Edit2, Trash2, MapPin, Search, CheckCircle2, ChevronDown, X, LocateFixed, RotateCcw } from 'lucide-react';
+import { Building2, Plus, Edit2, Trash2, MapPin, Search, CheckCircle2, ChevronDown, X, LocateFixed, RotateCcw, Loader2 } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
 export default function OrganizationSettings() {
@@ -15,7 +15,9 @@ export default function OrganizationSettings() {
   const [locationOrgId, setLocationOrgId] = useState(null);
   const [locationName, setLocationName] = useState('');
   const [distanceCheckEnabled, setDistanceCheckEnabled] = useState(true);
-  
+  const [isSavingOrg, setIsSavingOrg] = useState(false);
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
+
   const [gpsValue, setGpsValue] = useState('');
   const [isGettingGps, setIsGettingGps] = useState(false);
 
@@ -258,7 +260,7 @@ export default function OrganizationSettings() {
             >
               <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
                 <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><Building2 size={18}/> {editingOrg ? 'Edit Organization' : 'Register Organization'}</h3>
-                <button onClick={() => setIsOrgModalOpen(false)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"><X size={20}/></button>
+                <button onClick={() => setIsOrgModalOpen(false)} disabled={isSavingOrg} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"><X size={20}/></button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
@@ -292,8 +294,9 @@ export default function OrganizationSettings() {
                   </span>
                 </button>
                 <div className="pt-4 flex gap-3">
-                  <button onClick={() => setIsOrgModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
-                  <button onClick={async () => {
+                  <button onClick={() => setIsOrgModalOpen(false)} disabled={isSavingOrg} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+                  <button disabled={isSavingOrg} onClick={async () => {
+                    if (isSavingOrg) return;
                     try {
                       const dialog = document.querySelector('[data-org-modal]');
                       const inputs = dialog ? Array.from(dialog.querySelectorAll('input')) : [];
@@ -306,13 +309,15 @@ export default function OrganizationSettings() {
                         return;
                       }
 
+                      if (!editingOrg && (!receptionistEmail || !receptionistPassword)) {
+                        window.alert('Receptionist email and password are required.');
+                        return;
+                      }
+
+                      setIsSavingOrg(true);
                       if (editingOrg) {
                         await updateOrganization(editingOrg.id, { name, contactEmail: receptionistEmail, distanceCheckEnabled });
                       } else {
-                        if (!receptionistEmail || !receptionistPassword) {
-                          window.alert('Receptionist email and password are required.');
-                          return;
-                        }
                         const org = await createOrganization({ name, contactEmail: receptionistEmail, distanceCheckEnabled });
                         await createUser({
                           name: `${name} Reception`,
@@ -326,8 +331,13 @@ export default function OrganizationSettings() {
                       setIsOrgModalOpen(false);
                     } catch (error) {
                       window.alert(error?.message || 'Unable to save organization.');
+                    } finally {
+                      setIsSavingOrg(false);
                     }
-                  }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity">{editingOrg ? 'Save Changes' : 'Create Org'}</button>
+                  }} className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {isSavingOrg && <Loader2 size={16} className="animate-spin" />}
+                    {isSavingOrg ? (editingOrg ? 'Saving...' : 'Creating...') : (editingOrg ? 'Save Changes' : 'Create Org')}
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -347,7 +357,7 @@ export default function OrganizationSettings() {
             >
               <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
                 <h3 className="font-bold text-lg dark:text-white flex items-center gap-2"><MapPin size={18}/> Add New Location</h3>
-                <button onClick={() => setIsLocationModalOpen(false)} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"><X size={20}/></button>
+                <button onClick={() => setIsLocationModalOpen(false)} disabled={isSavingLocation} className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-40 disabled:cursor-not-allowed"><X size={20}/></button>
               </div>
               <div className="p-6 space-y-4">
                 <div className="space-y-1">
@@ -382,9 +392,11 @@ export default function OrganizationSettings() {
                   </div>
                 </div>
                 <div className="pt-4 flex gap-3">
-                  <button onClick={() => setIsLocationModalOpen(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">Cancel</button>
+                  <button onClick={() => setIsLocationModalOpen(false)} disabled={isSavingLocation} className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
                   <button
+                    disabled={isSavingLocation}
                     onClick={async () => {
+                      if (isSavingLocation) return;
                       if (!locationOrgId) {
                         window.alert('Select an organization first.');
                         return;
@@ -396,6 +408,7 @@ export default function OrganizationSettings() {
                           return;
                         }
 
+                        setIsSavingLocation(true);
                         await createLocation(locationOrgId, {
                           name: locationName,
                           address: gpsValue,
@@ -404,11 +417,14 @@ export default function OrganizationSettings() {
                         setIsLocationModalOpen(false);
                       } catch (error) {
                         window.alert(error?.message || 'Unable to create location.');
+                      } finally {
+                        setIsSavingLocation(false);
                       }
                     }}
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--color-brand-terracotta)] text-white font-bold shadow-md hover:opacity-90 transition-opacity disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Create Location
+                    {isSavingLocation && <Loader2 size={16} className="animate-spin" />}
+                    {isSavingLocation ? 'Creating...' : 'Create Location'}
                   </button>
                 </div>
               </div>
