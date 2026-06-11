@@ -1282,7 +1282,7 @@ export default function MapNavigationPage() {
             transition={{ type: 'spring', damping: 22, stiffness: 280 }}
             role="status"
             aria-live="polite"
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[800] flex items-start gap-3 px-5 py-4 max-w-sm w-[calc(100%-2rem)] rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-2xl border border-emerald-400/40"
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[1100] flex items-start gap-3 px-5 py-4 max-w-sm w-[calc(100%-2rem)] rounded-2xl bg-gradient-to-r from-green-500 to-emerald-600 text-white shadow-2xl border border-emerald-400/40"
           >
             <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0 backdrop-blur-sm">
               <PartyPopper size={22} />
