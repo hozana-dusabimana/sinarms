@@ -73,6 +73,44 @@ function ensureHydrated(state) {
   return refreshAlerts(nextState);
 }
 
+// The visitor map reads node.lat/node.lng directly to draw the route line and
+// the destination pin, but map_nodes only persists x/y (there are no lat/lng
+// columns) and the geo step that derives lat/lng runs only while seeding. So on
+// every reload from MySQL the nodes come back coordinate-less and navigation
+// shows just the "you are here" dot — no path, no destination. We rebuild
+// lat/lng from the stored x/y using the EXACT projection the Facility Map Editor
+// uses (the location address as the centre, 0.0001 deg per x/y unit) so the
+// visitor map lines up with the nodes and paths the admin already recorded —
+// using the data already in the database, never the seed. Mutates maps in place.
+const DEFAULT_MAP_CENTER = [-1.9443, 30.0621];
+
+function addressCenter(address) {
+  const parts = String(address || '')
+    .split(',')
+    .map((part) => parseFloat(part.trim()));
+  if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
+    return parts;
+  }
+  return DEFAULT_MAP_CENTER;
+}
+
+function attachNodeGeoFromXY(maps, locationRows) {
+  const centerByLocation = new Map(
+    (locationRows || []).map((row) => [row.id, addressCenter(row.address)]),
+  );
+
+  Object.entries(maps || {}).forEach(([locationId, map]) => {
+    const center = centerByLocation.get(locationId) || DEFAULT_MAP_CENTER;
+    (map.nodes || []).forEach((node) => {
+      if (node.lat != null && node.lng != null) return;
+      node.lat = center[0] + Number(node.y || 0) * 0.0001;
+      node.lng = center[1] + Number(node.x || 0) * 0.0001;
+    });
+  });
+
+  return maps;
+}
+
 function removeLegacyPartnerDefaults(state) {
   const nextState = clone(state);
   let changed = false;
@@ -449,6 +487,8 @@ async function loadStateFromDatabase() {
       isAccessible: Boolean(row.is_accessible),
     });
   });
+
+  attachNodeGeoFromXY(maps, locations);
 
   return ensureHydrated({
     organizations: organizations.map((row) => ({
