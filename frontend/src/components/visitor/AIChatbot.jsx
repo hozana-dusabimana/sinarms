@@ -271,12 +271,17 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   />
-                  <button 
+                  {/* Microphone button hidden — speech input was a simulated
+                      demo (auto-filled a canned question), not real speech-to-text.
+                      Left toggleListen/isListening in place to avoid touching the
+                      rest of the component.
+                  <button
                     onClick={toggleListen}
                     className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition-colors ${isListening ? 'bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-400 animate-pulse' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
                   >
                     {isListening ? <Mic size={18} /> : <MicOff size={18} />}
                   </button>
+                  */}
                 </div>
                 <button 
                   onClick={handleSend}
