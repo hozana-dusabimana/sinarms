@@ -8,6 +8,21 @@ const router = express.Router();
 
 const LOCATION_UPDATABLE = ['name', 'address', 'floorCount', 'description', 'status', 'qrCodeToken', 'receptionistIds'];
 
+// RP Tumba's seeded path mesh was retired (admin records real GPS trails
+// instead), but an editor session opened before that cleanup still holds the
+// old `edge-tumba-` edges in memory and would write them back on save. Strip
+// them from incoming payloads so a stale save can't resurrect the mesh.
+function stripRetiredSeedEdges(locationId, map) {
+  if (locationId !== 'loc-rp-tumba-main' || !map || !Array.isArray(map.edges)) {
+    return map;
+  }
+
+  return {
+    ...map,
+    edges: map.edges.filter((edge) => !String(edge.id || '').startsWith('edge-tumba-')),
+  };
+}
+
 function pick(source, allowed) {
   const result = {};
   if (!source) return result;
@@ -80,7 +95,7 @@ router.get('/:id/map', async (req, res) => {
 
 router.put('/:id/map', requireAuth, requireRole(['admin']), async (req, res) => {
   const nextState = await mutateState((draft) => {
-    draft.maps[req.params.id] = req.body;
+    draft.maps[req.params.id] = stripRetiredSeedEdges(req.params.id, req.body);
     return appendAuditEntry(draft, {
       userId: req.user.id,
       actorName: req.user.name,

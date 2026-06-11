@@ -68,7 +68,8 @@ export default function FacilityMapEditor() {
       lat: n.lat != null ? n.lat : defaultCenter[0] + (n.y || 0) * 0.0001,
       lng: n.lng != null ? n.lng : defaultCenter[1] + (n.x || 0) * 0.0001,
       label: n.label || n.id,
-      type: n.zone || n.type || 'public',
+      type: n.type || 'office',
+      zone: n.zone || 'public',
       aliases: n.aliases || [],
     }))
   );
@@ -325,7 +326,8 @@ export default function FacilityMapEditor() {
         lat: latlng.lat,
         lng: latlng.lng,
         label: 'New Node',
-        type: 'public',
+        type: 'office',
+        zone: 'public',
         aliases: [],
       };
       setNodes(prev => [...prev, newNode]);
@@ -348,7 +350,7 @@ export default function FacilityMapEditor() {
           // Convert lat/lng back to x/y for DB storage (reverse of the load conversion)
           const x = orig?.x != null && orig?.lat == null ? orig.x : Math.round((n.lng - defaultCenter[1]) / 0.0001);
           const y = orig?.y != null && orig?.lat == null ? orig.y : Math.round((n.lat - defaultCenter[0]) / 0.0001);
-          return { ...orig, id: n.id, lat: n.lat, lng: n.lng, x: isFinite(x) ? x : 0, y: isFinite(y) ? y : 0, label: n.label, zone: n.type, type: n.type, aliases: n.aliases, floor: orig?.floor || 1 };
+          return { ...orig, id: n.id, lat: n.lat, lng: n.lng, x: isFinite(x) ? x : 0, y: isFinite(y) ? y : 0, label: n.label, zone: n.zone, type: n.type, aliases: n.aliases, floor: orig?.floor || 1 };
         }),
         edges: edges.map(e => ({
           id: e.id,
@@ -741,9 +743,21 @@ export default function FacilityMapEditor() {
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Node Type</label>
                       <div className="grid grid-cols-2 gap-2 mt-1">
-                        {['public', 'restricted', 'checkpoint', 'office', 'corridor', 'exit'].map(t => (
+                        {['office', 'corridor', 'checkpoint', 'exit'].map(t => (
                           <button key={t} onClick={() => updateActiveNode({ type: t })} className={`${activeNode.type === t ? 'bg-[var(--color-brand-terracotta)] text-white shadow-md shadow-red-500/20 border-none' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'} py-2 rounded-lg text-xs font-bold transition-colors capitalize`}>
                             {t}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-slate-400 pl-1">Only “office” nodes appear as destinations in the visitor portal.</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest pl-1">Zone</label>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        {['public', 'restricted', 'waiting', 'emergency'].map(z => (
+                          <button key={z} onClick={() => updateActiveNode({ zone: z })} className={`${activeNode.zone === z ? 'bg-[var(--color-brand-terracotta)] text-white shadow-md shadow-red-500/20 border-none' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'} py-2 rounded-lg text-xs font-bold transition-colors capitalize`}>
+                            {z}
                           </button>
                         ))}
                       </div>

@@ -273,6 +273,45 @@ function removeTumbaSeedEdges(state) {
   return { state: nextState, changed: true };
 }
 
+// The Facility Map Editor used to load each node's zone into its "type"
+// field and write that single value back into BOTH columns on save, so one
+// save round-trip turned e.g. type:'office'/zone:'public' into
+// 'public'/'public'. The visitor portal only offers type:'office' nodes as
+// destinations, so any location whose map was saved through that editor lost
+// its whole destination dropdown. Restore type/zone from the seed where the
+// node id matches a seed node; otherwise the node is admin-made and its real
+// type is unknowable, so assume 'office' — a wrongly-listed destination can
+// be fixed in the editor, a missing one hides the bug entirely.
+const ZONE_VALUES = new Set(['public', 'restricted', 'waiting', 'emergency']);
+
+function repairZoneValuedNodeTypes(state) {
+  const hasCorruptNode = Object.values(state.maps || {}).some((map) =>
+    (map.nodes || []).some((node) => ZONE_VALUES.has(node.type)),
+  );
+  if (!hasCorruptNode) {
+    return { state, changed: false };
+  }
+
+  const nextState = clone(state);
+  const seedMaps = createSeedState().maps || {};
+
+  Object.entries(nextState.maps).forEach(([locationId, map]) => {
+    (map.nodes || []).forEach((node) => {
+      if (!ZONE_VALUES.has(node.type)) return;
+      const seedNode = ((seedMaps[locationId] || {}).nodes || []).find((entry) => entry.id === node.id);
+      if (seedNode) {
+        node.zone = seedNode.zone || node.type;
+        node.type = seedNode.type;
+      } else {
+        node.zone = ZONE_VALUES.has(node.zone) ? node.zone : node.type;
+        node.type = 'office';
+      }
+    });
+  });
+
+  return { state: nextState, changed: true };
+}
+
 function buildAnalyticsRows(state) {
   const buckets = new Map();
 
@@ -864,9 +903,10 @@ async function initStore() {
         const { state: cleanedState, changed: cleaned } = removeLegacyPartnerDefaults(loadedState);
         const { state: mergedState, changed } = mergeMissingSeedEntities(cleanedState);
         const { state: receptionCleanedState, changed: tumbaCleaned } = removeTumbaReceptionDefaults(mergedState);
-        const { state: finalState, changed: tumbaEdgesCleaned } = removeTumbaSeedEdges(receptionCleanedState);
+        const { state: tumbaCleanedState, changed: tumbaEdgesCleaned } = removeTumbaSeedEdges(receptionCleanedState);
+        const { state: finalState, changed: typesRepaired } = repairZoneValuedNodeTypes(tumbaCleanedState);
 
-        if (cleaned || changed || tumbaCleaned || tumbaEdgesCleaned) {
+        if (cleaned || changed || tumbaCleaned || tumbaEdgesCleaned || typesRepaired) {
           await persistState(finalState);
         } else {
           stateCache = finalState;
