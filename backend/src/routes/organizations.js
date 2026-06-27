@@ -124,21 +124,12 @@ router.post('/:id/locations', requireAuth, requireRole(['admin']), async (req, r
       createdAt: new Date().toISOString(),
     };
     draft.locations.unshift(location);
+    // Start new locations with a blank map so admins build their own nodes
+    // instead of inheriting placeholder default places.
     draft.maps[locationId] = {
       floorplanImage: null,
-      nodes: [
-        { id: 'entrance', label: 'Entrance', aliases: ['entrance'], type: 'checkpoint', zone: 'public', x: 10, y: 55, floor: 1 },
-        { id: 'reception', label: 'Reception', aliases: ['reception'], type: 'office', zone: 'public', x: 30, y: 55, floor: 1 },
-        { id: 'corridor', label: 'Main Corridor', aliases: ['corridor'], type: 'corridor', zone: 'public', x: 52, y: 55, floor: 1 },
-        { id: 'office', label: 'Main Office', aliases: ['office'], type: 'office', zone: 'public', x: 78, y: 55, floor: 1 },
-        { id: 'exit', label: 'Exit', aliases: ['exit'], type: 'exit', zone: 'emergency', x: 92, y: 55, floor: 1 },
-      ],
-      edges: [
-        { id: createId('edge'), from: 'entrance', to: 'reception', distanceM: 10, direction: 'straight', directionHint: 'Walk to reception.', isAccessible: true },
-        { id: createId('edge'), from: 'reception', to: 'corridor', distanceM: 10, direction: 'straight', directionHint: 'Follow the corridor.', isAccessible: true },
-        { id: createId('edge'), from: 'corridor', to: 'office', distanceM: 16, direction: 'straight', directionHint: 'Continue to the main office.', isAccessible: true },
-        { id: createId('edge'), from: 'office', to: 'exit', distanceM: 12, direction: 'straight', directionHint: 'Continue to the exit.', isAccessible: true },
-      ],
+      nodes: [],
+      edges: [],
     };
     return appendAuditEntry(draft, {
       userId: req.user.id,
