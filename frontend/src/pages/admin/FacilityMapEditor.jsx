@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, Plus, Route, Trash2, Save, Move, Crosshair, CheckCircle2, Loader2, Navigation, Circle, ArrowRight, X, CornerDownRight, QrCode } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMapEvents, ImageOverlay } from 'react-leaflet';
+import { Upload, Plus, Route, Trash2, Save, Move, Crosshair, CheckCircle2, Loader2, Navigation, Circle, ArrowRight, X, CornerDownRight, QrCode, Pencil } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, CircleMarker, useMapEvents, useMap, ImageOverlay } from 'react-leaflet';
 import L from 'leaflet';
 import { useSinarms } from '../../context/SinarmsContext';
 import { getLocationById, getLocationMap, getOrganizationById } from '../../lib/sinarmsEngine';
@@ -34,12 +34,90 @@ function computeDirection(fromLat, fromLng, toLat, toLng) {
   return 'straight';
 }
 
-function MapEvents({ activeTool, onMapClick }) {
+function MapEvents({ onMapClick }) {
   useMapEvents({
     click(e) {
       onMapClick(e.latlng);
     }
   });
+  return null;
+}
+
+// Lets the admin freehand-draw a path with the mouse OR by sliding a finger on
+// a touchscreen. We use native Pointer events (not Leaflet's mouse events)
+// because pointer/touch events fire continuously during a finger slide — plain
+// `mousemove` does not, which would otherwise collapse a curve to a straight
+// line on touch devices. While drawing we disable map panning and browser
+// touch-scrolling so every wiggle of the path is captured.
+function DrawHandler({ active, mapRef, onStart, onMove, onEnd }) {
+  const map = useMap();
+  // Keep the latest callbacks in refs so the listener effect below only depends
+  // on [active, map] — re-attaching listeners mid-gesture would drop the stroke.
+  const startRef = useRef(onStart);
+  const moveRef = useRef(onMove);
+  const endRef = useRef(onEnd);
+  useEffect(() => {
+    startRef.current = onStart;
+    moveRef.current = onMove;
+    endRef.current = onEnd;
+  });
+
+  useEffect(() => {
+    mapRef.current = map;
+  }, [map, mapRef]);
+
+  useEffect(() => {
+    if (!map) return undefined;
+    const container = map.getContainer();
+    if (!active) {
+      map.dragging.enable();
+      container.style.cursor = '';
+      container.style.touchAction = '';
+      return undefined;
+    }
+
+    map.dragging.disable();
+    container.style.cursor = 'crosshair';
+    container.style.touchAction = 'none'; // stop the browser scrolling/zooming so the finger draws
+
+    let drawing = false;
+    const toLatLng = (e) => map.mouseEventToLatLng(e);
+
+    const down = (e) => {
+      drawing = true;
+      try { container.setPointerCapture(e.pointerId); } catch { /* not supported */ }
+      startRef.current(toLatLng(e));
+      e.preventDefault();
+    };
+    const move = (e) => {
+      if (!drawing) return;
+      moveRef.current(toLatLng(e));
+      e.preventDefault();
+    };
+    const finish = (e) => {
+      if (!drawing) return;
+      drawing = false;
+      try { container.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+      endRef.current(toLatLng(e));
+      e.preventDefault();
+    };
+
+    container.addEventListener('pointerdown', down);
+    container.addEventListener('pointermove', move);
+    container.addEventListener('pointerup', finish);
+    container.addEventListener('pointercancel', finish);
+
+    return () => {
+      container.removeEventListener('pointerdown', down);
+      container.removeEventListener('pointermove', move);
+      container.removeEventListener('pointerup', finish);
+      container.removeEventListener('pointercancel', finish);
+      map.dragging.enable();
+      container.style.cursor = '';
+      container.style.touchAction = '';
+    };
+  }, [active, map, mapRef]);
+
   return null;
 }
 
@@ -113,6 +191,14 @@ export default function FacilityMapEditor() {
   // Ref for the live Leaflet polyline — we update positions directly for smooth drawing
   const trailPolylineRef = useRef(null);
 
+  // --- Freehand Draw state ---
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [drawTrail, setDrawTrail] = useState([]);
+  const mapRef = useRef(null);
+  const drawTrailRef = useRef([]);
+  const drawFromNodeRef = useRef(null);
+  const drawPolylineRef = useRef(null);
+
   const activeNode = nodes.find(n => n.id === activeNodeId) || null;
   const activeEdge = edges.find(e => e.id === activeEdgeId) || null;
 
@@ -179,6 +265,57 @@ export default function FacilityMapEditor() {
     pollIdRef.current = pId;
   }, [addTrailPoint]);
 
+  // Creates or updates an edge between two nodes, storing the supplied trail
+  // (GPS points or freehand-drawn points) so navigation can replay the exact path.
+  const upsertEdge = useCallback((fromId, toNodeId, trail) => {
+    const fromNode = nodes.find(n => n.id === fromId);
+    const toNode = nodes.find(n => n.id === toNodeId);
+
+    // Total distance along the trail; fall back to straight line if too short
+    let totalDist = 0;
+    for (let i = 1; i < trail.length; i++) {
+      totalDist += haversineDistance(trail[i - 1][0], trail[i - 1][1], trail[i][0], trail[i][1]);
+    }
+    if (totalDist < 1 && fromNode && toNode) {
+      totalDist = haversineDistance(fromNode.lat, fromNode.lng, toNode.lat, toNode.lng);
+    }
+
+    const direction = fromNode && toNode ? computeDirection(fromNode.lat, fromNode.lng, toNode.lat, toNode.lng) : 'straight';
+
+    setEdges(prev => {
+      const existing = prev.find(e =>
+        (e.from === fromId && e.to === toNodeId) ||
+        (e.from === toNodeId && e.to === fromId)
+      );
+
+      if (existing) {
+        setActiveEdgeId(existing.id);
+        return prev.map(e => e.id === existing.id ? {
+          ...e,
+          distanceM: Math.round(totalDist * 10) / 10,
+          direction,
+          directionHint: `Walk ${direction} to ${toNode?.label || toNodeId}.`,
+          gpsTrail: trail,
+        } : e);
+      }
+
+      const newEdge = {
+        id: `${fromId}-${toNodeId}`,
+        from: fromId,
+        to: toNodeId,
+        distanceM: Math.round(totalDist * 10) / 10,
+        direction,
+        directionHint: `Walk ${direction} to ${toNode?.label || toNodeId}.`,
+        isAccessible: true,
+        gpsTrail: trail,
+      };
+      setActiveEdgeId(newEdge.id);
+      return [...prev, newEdge];
+    });
+
+    setPropertiesTab('edge');
+  }, [nodes]);
+
   const stopRecording = useCallback((toNodeId) => {
     console.log(`[PathRecorder] STOP recording → destination node: "${toNodeId}"`);
     if (watchIdRef.current != null) {
@@ -204,67 +341,14 @@ export default function FacilityMapEditor() {
       return;
     }
 
-    // Calculate total walked distance from GPS trail
-    let totalDist = 0;
-    for (let i = 1; i < trail.length; i++) {
-      totalDist += haversineDistance(trail[i - 1][0], trail[i - 1][1], trail[i][0], trail[i][1]);
-    }
+    upsertEdge(fromId, toNodeId, trail);
 
-    const fromNode = nodes.find(n => n.id === fromId);
-    const toNode = nodes.find(n => n.id === toNodeId);
-
-    // Fallback: straight-line distance if GPS trail too short
-    if (totalDist < 1 && fromNode && toNode) {
-      totalDist = haversineDistance(fromNode.lat, fromNode.lng, toNode.lat, toNode.lng);
-      console.log(`[PathRecorder] GPS trail too short (${trail.length} points), using straight-line fallback: ${totalDist.toFixed(2)}m`);
-    }
-
-    const direction = fromNode && toNode ? computeDirection(fromNode.lat, fromNode.lng, toNode.lat, toNode.lng) : 'straight';
-
-    console.log(`[PathRecorder] Edge: "${fromId}" → "${toNodeId}" | distance: ${(Math.round(totalDist * 10) / 10)}m | direction: ${direction} | GPS points: ${trail.length}`);
-    console.log(`[PathRecorder] GPS trail:`, trail.map((p, i) => `  #${i}: [${p[0].toFixed(16)}, ${p[1].toFixed(15)}]`).join('\n'));
-
-    // Check if edge already exists
-    setEdges(prev => {
-      const existing = prev.find(e =>
-        (e.from === fromId && e.to === toNodeId) ||
-        (e.from === toNodeId && e.to === fromId)
-      );
-
-      if (existing) {
-        console.log(`[PathRecorder] Updating existing edge: "${existing.id}"`);
-        setActiveEdgeId(existing.id);
-        return prev.map(e => e.id === existing.id ? {
-          ...e,
-          distanceM: Math.round(totalDist * 10) / 10,
-          direction,
-          directionHint: `Walk ${direction} to ${toNode?.label || toNodeId}.`,
-          gpsTrail: trail,
-        } : e);
-      }
-
-      const newEdge = {
-        id: `${fromId}-${toNodeId}`,
-        from: fromId,
-        to: toNodeId,
-        distanceM: Math.round(totalDist * 10) / 10,
-        direction,
-        directionHint: `Walk ${direction} to ${toNode?.label || toNodeId}.`,
-        isAccessible: true,
-        gpsTrail: trail,
-      };
-      console.log(`[PathRecorder] New edge: "${newEdge.id}" with ${trail.length} GPS trail points`);
-      setActiveEdgeId(newEdge.id);
-      return [...prev, newEdge];
-    });
-
-    setPropertiesTab('edge');
     setRecordFromNodeId(null);
     setLiveTrail([]);
     liveTrailRef.current = [];
     setLivePosition(null);
     setLiveAccuracy(null);
-  }, [nodes]);
+  }, [upsertEdge]);
 
   const cancelRecording = useCallback(() => {
     console.log(`[PathRecorder] CANCELLED | ${liveTrailRef.current.length} GPS points discarded`);
@@ -284,6 +368,82 @@ export default function FacilityMapEditor() {
     setLiveAccuracy(null);
   }, []);
 
+  // --- Freehand Draw ---
+  // Find the node closest to a point on screen, within a forgiving pixel radius,
+  // so the admin doesn't have to start/end the line exactly on the marker.
+  const nearestNode = useCallback((latlng) => {
+    const map = mapRef.current;
+    if (!map) return null;
+    const p = map.latLngToContainerPoint(latlng);
+    let best = null;
+    let bestD = Infinity;
+    nodes.forEach(n => {
+      const np = map.latLngToContainerPoint([n.lat, n.lng]);
+      const d = Math.hypot(np.x - p.x, np.y - p.y);
+      if (d < bestD) { bestD = d; best = n; }
+    });
+    return bestD <= 30 ? best : null; // 30px snap radius
+  }, [nodes]);
+
+  const handleDrawStart = useCallback((latlng) => {
+    const startNode = nearestNode(latlng);
+    // Anchor the line on the start node if one is nearby, else on the raw point
+    const start = startNode ? [startNode.lat, startNode.lng] : [latlng.lat, latlng.lng];
+    drawFromNodeRef.current = startNode;
+    drawTrailRef.current = [start];
+    setDrawTrail([start]);
+    setIsDrawing(true);
+  }, [nearestNode]);
+
+  const handleDrawMove = useCallback((latlng) => {
+    // drawTrailRef is seeded on start — using it (not isDrawing state) avoids a
+    // stale-closure gap on the first moves right after the stroke begins.
+    if (!drawTrailRef.current.length) return;
+    const map = mapRef.current;
+    // Skip tiny movements so the trail stays light and smooth
+    if (map) {
+      const last = drawTrailRef.current[drawTrailRef.current.length - 1];
+      const lp = map.latLngToContainerPoint(last);
+      const cp = map.latLngToContainerPoint(latlng);
+      if (Math.hypot(cp.x - lp.x, cp.y - lp.y) < 4) return;
+    }
+    const next = [...drawTrailRef.current, [latlng.lat, latlng.lng]];
+    drawTrailRef.current = next;
+    if (drawPolylineRef.current) drawPolylineRef.current.setLatLngs(next);
+    setDrawTrail(next);
+  }, []);
+
+  const resetDrawing = useCallback(() => {
+    setIsDrawing(false);
+    setDrawTrail([]);
+    drawTrailRef.current = [];
+    drawFromNodeRef.current = null;
+  }, []);
+
+  const handleDrawEnd = useCallback((latlng) => {
+    if (!drawTrailRef.current.length) return;
+    const fromNode = drawFromNodeRef.current;
+    const endNode = nearestNode(latlng);
+    const trail = [...drawTrailRef.current];
+    resetDrawing();
+
+    // A path must connect two different nodes
+    if (!fromNode || !endNode || fromNode.id === endNode.id) {
+      if (trail.length > 1) {
+        alert('Start and finish your drawing on top of two different nodes.');
+      }
+      return;
+    }
+
+    // Snap the endpoints exactly to the nodes; keep the hand-drawn shape between
+    const fullTrail = [
+      [fromNode.lat, fromNode.lng],
+      ...trail.slice(1),
+      [endNode.lat, endNode.lng],
+    ];
+    upsertEdge(fromNode.id, endNode.id, fullTrail);
+  }, [nearestNode, resetDrawing, upsertEdge]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -294,6 +454,9 @@ export default function FacilityMapEditor() {
 
   // --- Node click handler ---
   const handleNodeClick = (nodeId) => {
+    // In draw mode the map (not the marker) handles pointer events for snapping
+    if (activeTool === 'draw') return;
+
     if (activeTool === 'record') {
       if (isRecording) {
         // Arriving at destination node - finish recording
@@ -503,6 +666,7 @@ export default function FacilityMapEditor() {
             {[
               { id: 'select', icon: <Move size={18} />, label: 'Select' },
               { id: 'node', icon: <Plus size={18} />, label: 'Add Node' },
+              { id: 'draw', icon: <Pencil size={18} />, label: 'Draw Path' },
               { id: 'record', icon: <Navigation size={18} />, label: 'Walk & Record' },
               { id: 'delete', icon: <Trash2 size={18} />, label: 'Delete', color: 'text-red-500 hover:bg-red-50 dark:hover:bg-red-500/20' },
             ].map(tool => (
@@ -511,6 +675,9 @@ export default function FacilityMapEditor() {
                 onClick={() => {
                   if (isRecording && tool.id !== 'record') {
                     cancelRecording();
+                  }
+                  if (isDrawing && tool.id !== 'draw') {
+                    resetDrawing();
                   }
                   setActiveTool(tool.id);
                   setRecordFromNodeId(null);
@@ -587,6 +754,30 @@ export default function FacilityMapEditor() {
             )}
           </AnimatePresence>
 
+          {/* Draw Path: freehand drawing banner */}
+          <AnimatePresence>
+            {activeTool === 'draw' && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="absolute top-14 inset-x-0 z-20 bg-indigo-50 dark:bg-indigo-900/30 border-b-2 border-indigo-400 dark:border-indigo-600 px-4 py-3 flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <Pencil size={16} className="text-indigo-600" />
+                  <span className="text-sm font-bold text-indigo-800 dark:text-indigo-300">
+                    {isDrawing
+                      ? `Drawing… (${drawTrail.length} pts) — release on the destination node`
+                      : 'Press and drag from one node to another to draw the path by hand'}
+                  </span>
+                </div>
+                <button onClick={() => { resetDrawing(); setActiveTool('select'); }} className="text-xs font-bold text-slate-600 bg-slate-200 dark:bg-slate-700 dark:text-slate-300 px-3 py-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
+                  Done
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Map Canvas */}
           <div className="flex-1 relative bg-slate-100/50 dark:bg-[#0b101e] mt-14 overflow-hidden z-0">
             <MapContainer
@@ -602,7 +793,14 @@ export default function FacilityMapEditor() {
                 maxZoom={22}
                 maxNativeZoom={19}
               />
-              <MapEvents activeTool={activeTool} onMapClick={handleMapClick} />
+              <MapEvents onMapClick={handleMapClick} />
+              <DrawHandler
+                active={activeTool === 'draw'}
+                mapRef={mapRef}
+                onStart={handleDrawStart}
+                onMove={handleDrawMove}
+                onEnd={handleDrawEnd}
+              />
 
               {floorplanUrl && floorplanBounds && (
                 <ImageOverlay url={floorplanUrl} bounds={floorplanBounds} opacity={0.8} />
@@ -641,6 +839,15 @@ export default function FacilityMapEditor() {
                 />
               )}
 
+              {/* Live freehand-drawn line — ref allows direct Leaflet updates for smooth drawing */}
+              {isDrawing && (
+                <Polyline
+                  ref={drawPolylineRef}
+                  positions={drawTrail}
+                  pathOptions={{ color: '#6366f1', weight: 5, opacity: 0.95, lineCap: 'round', lineJoin: 'round' }}
+                />
+              )}
+
               {/* Waypoint dots along the trail */}
               {isRecording && liveTrail.map((point, i) => (
                 <CircleMarker
@@ -668,6 +875,7 @@ export default function FacilityMapEditor() {
                   <Marker
                     key={node.id}
                     position={[node.lat, node.lng]}
+                    interactive={activeTool !== 'draw'}
                     eventHandlers={{ click: () => handleNodeClick(node.id) }}
                     opacity={
                       isFrom ? 1 :
@@ -923,15 +1131,20 @@ export default function FacilityMapEditor() {
 
                 {/* Quick instructions */}
                 <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-500/10 rounded-xl border border-amber-200 dark:border-amber-500/20">
-                  <p className="text-xs font-bold text-amber-800 dark:text-amber-400 mb-1">How to record paths:</p>
+                  <p className="text-xs font-bold text-amber-800 dark:text-amber-400 mb-1">Two ways to create paths:</p>
+                  <p className="text-[11px] font-bold text-amber-800 dark:text-amber-400 mt-1">Draw by hand (no walking):</p>
                   <ol className="text-xs text-amber-700 dark:text-amber-400/80 space-y-1 list-decimal list-inside">
-                    <li>Select <strong>Walk & Record</strong> from toolbar</li>
-                    <li>Click your <strong>starting node</strong> (current office)</li>
-                    <li><strong>Walk physically</strong> — GPS tracks your movement in real-time</li>
-                    <li>Path points and curve appear automatically as you move</li>
-                    <li>Click the <strong>destination node</strong> to finish</li>
-                    <li>Click <strong>Save Layout</strong> to persist</li>
+                    <li>Select <strong>Draw Path</strong> from toolbar</li>
+                    <li><strong>Press and drag</strong> from one node, trace the route, release on another node</li>
+                    <li>The hand-drawn shape is saved as the path</li>
                   </ol>
+                  <p className="text-[11px] font-bold text-amber-800 dark:text-amber-400 mt-2">Walk &amp; record (GPS):</p>
+                  <ol className="text-xs text-amber-700 dark:text-amber-400/80 space-y-1 list-decimal list-inside">
+                    <li>Select <strong>Walk & Record</strong>, click your <strong>starting node</strong></li>
+                    <li><strong>Walk physically</strong> — GPS tracks you in real-time</li>
+                    <li>Click the <strong>destination node</strong> to finish</li>
+                  </ol>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400/80 mt-2">Then click <strong>Save Layout</strong> to persist.</p>
                 </div>
               </div>
             )}
