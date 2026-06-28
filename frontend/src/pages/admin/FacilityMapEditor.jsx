@@ -34,6 +34,48 @@ function computeDirection(fromLat, fromLng, toLat, toLng) {
   return 'straight';
 }
 
+// Drops points that sit almost on top of each other — GPS clusters them when you
+// pause or stand still, which makes the line look jittery. Endpoints are kept.
+function removeClosePoints(points, minMeters) {
+  if (points.length < 3) return points;
+  const out = [points[0]];
+  for (let i = 1; i < points.length - 1; i++) {
+    const last = out[out.length - 1];
+    if (haversineDistance(last[0], last[1], points[i][0], points[i][1]) >= minMeters) {
+      out.push(points[i]);
+    }
+  }
+  out.push(points[points.length - 1]);
+  return out;
+}
+
+// Chaikin corner-cutting: rounds the sharp zig-zags of raw GPS into a smooth
+// curve. The first and last points stay fixed so the path still meets its nodes.
+function chaikin(points, iterations) {
+  let pts = points;
+  for (let it = 0; it < iterations; it++) {
+    if (pts.length < 3) return pts;
+    const out = [pts[0]];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p = pts[i];
+      const q = pts[i + 1];
+      out.push([p[0] + 0.25 * (q[0] - p[0]), p[1] + 0.25 * (q[1] - p[1])]);
+      out.push([p[0] + 0.75 * (q[0] - p[0]), p[1] + 0.75 * (q[1] - p[1])]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
+// Cleans up a raw GPS trail so a recorded path looks as smooth as a drawn one:
+// remove jitter clusters, then round the corners. Short trails are left alone.
+function smoothTrail(points) {
+  if (!points || points.length < 3) return points;
+  const thinned = removeClosePoints(points, 0.75);
+  return chaikin(thinned, 2);
+}
+
 function MapEvents({ onMapClick }) {
   useMapEvents({
     click(e) {
@@ -341,7 +383,8 @@ export default function FacilityMapEditor() {
       return;
     }
 
-    upsertEdge(fromId, toNodeId, trail);
+    // Smooth out GPS jitter so the recorded path looks as clean as a drawn one
+    upsertEdge(fromId, toNodeId, smoothTrail(trail));
 
     setRecordFromNodeId(null);
     setLiveTrail([]);
