@@ -1,0 +1,8 @@
+{
+  "accuracy": 0.965,
+  "records": 6000,
+  "labels": 56,
+  "epochs": 3,
+  "base_model": "distilbert-base-multilingual-cased",
+  "target_accuracy": 0.88
+}

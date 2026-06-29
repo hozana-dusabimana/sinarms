@@ -53,8 +53,13 @@ ai/data/conversation_log.csv
 ai/data/external/quora_duplicate_questions.csv
 ai/data/external/*.zip
 ai/artifacts/local_chatbot/
+# Fine-tuned DistilBERT weights (too large for git; regenerate via training.train_intent).
+# training_report.json is kept tracked as the accuracy evidence.
+ai/artifacts/intent_model/
 
 private-key.md
 deploy_prompt.md
 *.pem
 *.key
+newrouterkey.md
+new_server/
