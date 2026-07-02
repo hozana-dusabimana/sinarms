@@ -9,6 +9,7 @@ import AuditLog from './pages/admin/AuditLog';
 import FacilityMapEditor from './pages/admin/FacilityMapEditor';
 import FaqManagement from './pages/admin/FaqManagement';
 import OrganizationSettings from './pages/admin/OrganizationSettings';
+import ReportsPage from './pages/admin/ReportsPage';
 import UserManagement from './pages/admin/UserManagement';
 import DashboardPage from './pages/staff/DashboardPage';
 import LoginPage from './pages/staff/LoginPage';
@@ -45,6 +46,7 @@ function App() {
               <Route path="map-editor" element={<FacilityMapEditor />} />
               <Route path="organizations" element={<OrganizationSettings />} />
               <Route path="analytics" element={<AnalyticsDashboard />} />
+              <Route path="reports" element={<ReportsPage />} />
               <Route path="users" element={<UserManagement />} />
               <Route path="audit-log" element={<AuditLog />} />
             </Route>

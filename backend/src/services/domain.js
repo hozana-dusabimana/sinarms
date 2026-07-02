@@ -142,7 +142,10 @@ function scopeNotifications(state, user) {
 }
 
 function buildAnalytics(state, filters = {}) {
-  const visitors = state.visitors.filter((visitor) => {
+  // Org/location scope — the base population for the trend line and the
+  // weekday breakdown, both of which should stay independent of any weekday
+  // or single-day "focus" the caller applies below.
+  const scoped = state.visitors.filter((visitor) => {
     if (filters.organizationId && visitor.organizationId !== filters.organizationId) {
       return false;
     }
@@ -151,6 +154,37 @@ function buildAnalytics(state, filters = {}) {
       return false;
     }
 
+    return true;
+  });
+
+  // Optional focus filters. `weekday` (0=Sun … 6=Sat) answers recurring
+  // questions like "every Friday"; `date` (YYYY-MM-DD) pins a single calendar
+  // day. Both bucket by UTC to match the arrivalsByDay day keys below, so a
+  // "Friday" means the same thing everywhere in this function.
+  const weekdayRaw = filters.weekday;
+  const weekdayFocus =
+    weekdayRaw !== undefined && weekdayRaw !== null && weekdayRaw !== '' && /^[0-6]$/.test(`${weekdayRaw}`)
+      ? Number(weekdayRaw)
+      : null;
+  const dateFocus = /^\d{4}-\d{2}-\d{2}$/.test(filters.date || '') ? filters.date : null;
+
+  // The stat cards, top destinations and (optional) visitor list all reflect
+  // this focused set, so "which office is busiest on Fridays" is just the
+  // top-destinations of the Friday-focused visitors.
+  const visitors = scoped.filter((visitor) => {
+    if (weekdayFocus == null && !dateFocus) {
+      return true;
+    }
+    if (!visitor.checkinTime) {
+      return false;
+    }
+    const checkin = new Date(visitor.checkinTime);
+    if (weekdayFocus != null && checkin.getUTCDay() !== weekdayFocus) {
+      return false;
+    }
+    if (dateFocus && checkin.toISOString().slice(0, 10) !== dateFocus) {
+      return false;
+    }
     return true;
   });
 
@@ -195,8 +229,13 @@ function buildAnalytics(state, filters = {}) {
     dayKeys.push(date.toISOString().slice(0, 10));
   }
 
+  // Trend + weekday breakdown run over the org/location scope (not the weekday
+  // or single-day focus) so the volume line and the 7-bar breakdown always
+  // show the full picture for the selected range.
   const dailyCounts = new Map(dayKeys.map((key) => [key, 0]));
-  visitors.forEach((visitor) => {
+  const weekdayTotals = [0, 0, 0, 0, 0, 0, 0];
+  const weekdayDays = [new Set(), new Set(), new Set(), new Set(), new Set(), new Set(), new Set()];
+  scoped.forEach((visitor) => {
     if (!visitor.checkinTime) {
       return;
     }
@@ -207,6 +246,10 @@ function buildAnalytics(state, filters = {}) {
     }
 
     dailyCounts.set(dayKey, dailyCounts.get(dayKey) + 1);
+
+    const weekday = new Date(visitor.checkinTime).getUTCDay();
+    weekdayTotals[weekday] += 1;
+    weekdayDays[weekday].add(dayKey);
   });
 
   const arrivalsByDay = dayKeys.map((date) => ({
@@ -214,10 +257,44 @@ function buildAnalytics(state, filters = {}) {
     totalVisitors: dailyCounts.get(date) || 0,
   }));
 
+  // Per-weekday rollup: `total` across the range plus `average` visitors on a
+  // typical occurrence of that weekday (total ÷ number of that weekday's dates
+  // that actually saw traffic). Average is the fair way to compare "a typical
+  // Monday vs a typical Friday" regardless of how many of each fall in range.
+  const byWeekday = weekdayTotals.map((total, weekday) => ({
+    weekday,
+    total,
+    activeDays: weekdayDays[weekday].size,
+    average: weekdayDays[weekday].size ? Math.round(total / weekdayDays[weekday].size) : 0,
+  }));
+
   const today = new Date().toDateString();
-  const todayVisitors = visitors.filter(
+  const todayVisitors = scoped.filter(
     (visitor) => visitor.checkinTime && new Date(visitor.checkinTime).toDateString() === today,
   ).length;
+
+  // Detailed rows for the Reports drill-down — only built when asked, since the
+  // live dashboard poll never needs them.
+  const visitorRows = filters.includeVisitors
+    ? visitors
+        .slice()
+        .sort((left, right) => new Date(right.checkinTime || 0) - new Date(left.checkinTime || 0))
+        .map((visitor) => {
+          const map = getLocationMap(state, visitor.locationId);
+          const node = getNode(map, visitor.destinationNodeId);
+          return {
+            id: visitor.id,
+            name: visitor.name,
+            status: visitor.status,
+            checkinTime: visitor.checkinTime || null,
+            checkoutTime: visitor.checkoutTime || null,
+            durationMin: visitor.durationMin ?? null,
+            destination: node ? node.label : visitor.destinationText || null,
+            organizationId: visitor.organizationId,
+            locationId: visitor.locationId,
+          };
+        })
+    : undefined;
 
   return {
     totalVisitors: visitors.length,
@@ -225,13 +302,24 @@ function buildAnalytics(state, filters = {}) {
     // "Total Today" card stays consistent with the live directory instead of
     // showing an all-time count.
     todayVisitors,
-    activeVisitors: visitors.filter((visitor) => visitor.status === 'active').length,
+    // "Active Now" stays a true live count for the whole scope — it ignores the
+    // weekday/date focus, since who is physically in the building right now
+    // doesn't depend on which weekday you're inspecting.
+    activeVisitors: scoped.filter((visitor) => visitor.status === 'active').length,
     averageDuration,
     alertsToday: state.alerts.filter(
       (alert) => new Date(alert.triggeredAt).toDateString() === new Date().toDateString(),
     ).length,
     topDestinations,
     arrivalsByDay,
+    byWeekday,
+    // Echo the active focus back so the UI can label what it's showing.
+    focus: {
+      days,
+      weekday: weekdayFocus,
+      date: dateFocus,
+    },
+    ...(visitorRows ? { visitors: visitorRows } : {}),
   };
 }
 

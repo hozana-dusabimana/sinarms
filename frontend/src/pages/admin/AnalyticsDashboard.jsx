@@ -5,6 +5,9 @@ import { useSinarms } from '../../context/SinarmsContext';
 import { formatDurationMinutes } from '../../lib/sinarmsEngine';
 import api from '../../lib/api';
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
 function weekOfYear(date) {
   const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
   const dayNum = (d.getUTCDay() + 6) % 7;
@@ -21,6 +24,8 @@ export default function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState('Last 30 Days');
   const [granularity, setGranularity] = useState('D');
   const [organizationId, setOrganizationId] = useState('');
+  const [weekday, setWeekday] = useState(''); // '' = all days, else '0'..'6'
+  const [weekdayMetric, setWeekdayMetric] = useState('average'); // 'average' | 'total'
   const organizationOptions = (state?.organizations || [])
     .slice()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -102,7 +107,7 @@ export default function AnalyticsDashboard() {
     async function load() {
       try {
         const response = await api.get('/api/analytics/summary', {
-          params: { days, organizationId: organizationId || undefined },
+          params: { days, organizationId: organizationId || undefined, weekday: weekday || undefined },
         });
         if (!cancelled) {
           setAnalytics(response.data);
@@ -121,7 +126,22 @@ export default function AnalyticsDashboard() {
       cancelled = true;
       clearInterval(id);
     };
-  }, [dateRange, organizationId]);
+  }, [dateRange, organizationId, weekday]);
+
+  const byWeekday = analytics.byWeekday || [];
+  const weekdayBars = byWeekday.map((entry) => ({
+    weekday: entry.weekday,
+    label: WEEKDAY_SHORT[entry.weekday] || '',
+    total: entry.total || 0,
+    average: entry.average || 0,
+    activeDays: entry.activeDays || 0,
+    value: weekdayMetric === 'total' ? (entry.total || 0) : (entry.average || 0),
+  }));
+  const weekdayMax = Math.max(1, ...weekdayBars.map((entry) => entry.value));
+  const busiestWeekday = weekdayBars.reduce(
+    (best, entry) => (entry.value > (best?.value ?? -1) ? entry : best),
+    null,
+  );
 
   return (
     <div className="flex flex-col h-full space-y-6 animate-in fade-in">
@@ -151,6 +171,19 @@ export default function AnalyticsDashboard() {
               ))}
             </select>
           )}
+          <select
+            value={weekday}
+            onChange={(e) => setWeekday(e.target.value)}
+            title="Focus on a weekday"
+            className="bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-xl transition-all font-bold border border-slate-300 dark:border-slate-600 shadow-sm outline-none"
+          >
+            <option value="">All days</option>
+            {WEEKDAY_NAMES.map((name, idx) => (
+              <option key={name} value={String(idx)}>
+                {name}s
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => {
               const ranges = ['Last 7 Days', 'Last 30 Days', 'Last 90 Days'];
@@ -256,6 +289,9 @@ export default function AnalyticsDashboard() {
               <MapPin size={18} className="text-[var(--color-brand-terracotta)] dark:text-red-500" />
               Most Visited Departments
             </h3>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+              {weekday ? `${WEEKDAY_NAMES[Number(weekday)]}s only` : 'All days'}
+            </p>
           </div>
           
           <div className="p-5 space-y-4 flex-1 bg-white/50 dark:bg-slate-900/50">
@@ -280,6 +316,85 @@ export default function AnalyticsDashboard() {
             })}
           </div>
         </div>
+      </div>
+
+      {/* Visitors by Weekday — recurring pattern (e.g. "every Monday") */}
+      <div className="glass-card p-6 flex flex-col">
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calendar size={20} className="text-[var(--color-brand-terracotta)] dark:text-red-500" />
+              Visitors by Weekday
+            </h3>
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-1">
+              {weekdayMetric === 'average'
+                ? 'Average visitors on a typical day of the week'
+                : 'Total visitors per weekday over the selected range'}
+              {busiestWeekday && busiestWeekday.value > 0 && (
+                <span className="ml-1 text-[var(--color-brand-terracotta)] dark:text-red-400">
+                  · Busiest: {WEEKDAY_NAMES[busiestWeekday.weekday]}
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+            {[
+              { key: 'average', label: 'Avg / day' },
+              { key: 'total', label: 'Total' },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setWeekdayMetric(opt.key)}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition-colors ${
+                  opt.key === weekdayMetric
+                    ? 'bg-white text-slate-900 dark:bg-slate-700 dark:text-white shadow-sm'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-end gap-2 sm:gap-4 h-[220px] px-2">
+          {weekdayBars.map((bar) => (
+            <button
+              type="button"
+              key={bar.weekday}
+              onClick={() => setWeekday(weekday === String(bar.weekday) ? '' : String(bar.weekday))}
+              title={`${WEEKDAY_NAMES[bar.weekday]} — ${bar.total} total across ${bar.activeDays} day(s), avg ${bar.average}/day. Click to focus.`}
+              className="flex-1 flex flex-col justify-end items-center group/bar h-full"
+            >
+              <div className="w-full flex-1 flex flex-col justify-end items-center">
+                <span className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">{bar.value}</span>
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.round((bar.value / weekdayMax) * 100)}%` }}
+                  transition={{ duration: 0.8, type: 'spring' }}
+                  className={`w-full max-w-[52px] rounded-t-md transition-colors ${
+                    weekday === String(bar.weekday)
+                      ? 'bg-red-600 dark:bg-red-400'
+                      : 'bg-[var(--color-brand-terracotta)]/70 dark:bg-red-500/70 group-hover/bar:bg-red-600 dark:group-hover/bar:bg-red-400'
+                  }`}
+                />
+              </div>
+              <span
+                className={`text-[11px] font-bold mt-2 ${
+                  weekday === String(bar.weekday)
+                    ? 'text-[var(--color-brand-terracotta)] dark:text-red-400'
+                    : 'text-slate-500 dark:text-slate-400'
+                }`}
+              >
+                {bar.label}
+              </span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3 text-center">
+          Tip: click a bar to filter every chart above to that weekday.
+        </p>
       </div>
     </div>
   );
