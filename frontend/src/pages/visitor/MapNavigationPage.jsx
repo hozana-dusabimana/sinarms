@@ -1158,8 +1158,11 @@ export default function MapNavigationPage() {
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[650] flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
             <MapPin size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
             <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{currentNodeLabel}</span>
-            <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('visitor.nav.metersAway', { meters: Math.round(remainingDistance) })}</span>
+            {/* Remaining distance intentionally hidden: it reflects the on-site
+                walking route, which is 0/misleading when off-site (shows a bogus
+                "0m away"). The approach banner already surfaces the real distance. */}
+            {/* <span className="text-xs text-slate-400 dark:text-slate-500">•</span>
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">{t('visitor.nav.metersAway', { meters: Math.round(remainingDistance) })}</span> */}
           </div>
         )}
       </div>
