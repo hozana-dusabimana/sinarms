@@ -238,7 +238,7 @@ function roundRouteCorners(points, radiusFrac = 0.3, samples = 8) {
 export default function MapNavigationPage() {
   const navigate = useNavigate();
   const routerLocation = useLocation();
-  const { state, currentVisitor, setCurrentVisitor, moveVisitor, checkoutVisitor, isReady } = useSinarms();
+  const { state, currentVisitor, setCurrentVisitor, refreshCurrentVisitor, moveVisitor, checkoutVisitor, isReady } = useSinarms();
   const { t, language } = useLanguage();
   const [isFullscreen, setIsFullscreen] = useState(false);
   // Real-time GPS, smoothed + heading-aware, from the shared hook. `livePosition`
@@ -289,6 +289,7 @@ export default function MapNavigationPage() {
   const arrivalAnnouncedRef = useRef(null);
   const outsideSinceRef = useRef(null);
   const autoCheckoutInFlightRef = useRef(false);
+  const remoteCheckoutHandledRef = useRef(false);
   const mapRef = useRef(null);
   const routeListRef = useRef(null);
   const lastRouteOriginRef = useRef(null);
@@ -488,6 +489,33 @@ export default function MapNavigationPage() {
       .then(() => navigate('/visit/checkout'))
       .catch(() => { autoCheckoutInFlightRef.current = false; outsideSinceRef.current = null; });
   }, [livePosition, currentVisitor?.id, currentVisitor?.status, currentVisitor?.locationId, state, checkoutVisitor, navigate]);
+
+  // Reception/admin can close a visit from their console while the visitor is
+  // still walking the route. The visitor app holds its own copy of the record
+  // and — unlike the staff dashboard — never polls, so without this it would
+  // keep showing turn-by-turn navigation for a visit that ended server-side.
+  // Refresh our own record on a short interval while the visit is active so the
+  // redirect effect below can react the moment the status flips.
+  useEffect(() => {
+    if (!currentVisitor?.id || currentVisitor.status !== 'active') return undefined;
+    const id = setInterval(() => {
+      refreshCurrentVisitor(currentVisitor.id).catch(() => {});
+    }, 8000);
+    return () => clearInterval(id);
+  }, [currentVisitor?.id, currentVisitor?.status, refreshCurrentVisitor]);
+
+  // When the visit ends server-side while we're on the map — a staff manual
+  // checkout, or a checkout from another device — leave navigation and send the
+  // visitor to the survey/checkout screen, the same destination the geofenced
+  // auto-checkout uses. checkoutVisitor keeps the visitor active locally, so the
+  // survey still saves against the already-exited record (the backend's checkout
+  // is idempotent for the survey). Guarded so it fires exactly once.
+  useEffect(() => {
+    if (!currentVisitor?.id || currentVisitor.status === 'active') return;
+    if (remoteCheckoutHandledRef.current) return;
+    remoteCheckoutHandledRef.current = true;
+    navigate('/visit/checkout');
+  }, [currentVisitor?.id, currentVisitor?.status, navigate]);
 
   // Arrival announcement: when the visitor reaches their destination, play a
   // spoken cue and a soft chime, and surface a toast banner. We only announce

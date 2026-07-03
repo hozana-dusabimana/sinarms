@@ -896,6 +896,7 @@ export function SinarmsProvider({ children }) {
     registerVisitor,
     qrCheckin,
     setCurrentVisitor,
+    refreshCurrentVisitor,
     moveVisitor,
     rerouteVisitor,
     sendHeartbeat,
