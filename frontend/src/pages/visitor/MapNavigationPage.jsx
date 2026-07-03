@@ -738,6 +738,29 @@ export default function MapNavigationPage() {
     ? distanceMeters(livePosition, siteEntryPos)
     : null;
   const isFarFromSite = distanceToSiteM != null && distanceToSiteM > FAR_FROM_SITE_M;
+
+  // Off-road bridge, drawn only while far. OSRM is a driving router: it snaps
+  // the approach line's far end to the nearest road, so on a site set back from
+  // the street grid (Ruliba's gate/offices are off KN 1 Road) the blue line
+  // stops at the tarmac and never visually reaches the destination pin. We draw
+  // a dashed connector from where the road route ends → the gate → the office
+  // so the eye follows through the last off-road stretch, without pretending
+  // that stretch is a real routed path (dashed = "walk this way").
+  const approachConnector = (() => {
+    if (!isFarFromSite || !displayedApproachRoute || displayedApproachRoute.length < 1) return null;
+    const approachEnd = displayedApproachRoute[displayedApproachRoute.length - 1];
+    const pts = [approachEnd];
+    if (isValidLatLng(siteEntryPos)) pts.push(siteEntryPos);
+    if (
+      isValidLatLng(destinationNodePos)
+      && (!isValidLatLng(siteEntryPos) || distanceMeters(siteEntryPos, destinationNodePos) > 1)
+    ) {
+      pts.push(destinationNodePos);
+    }
+    const valid = pts.filter(isValidLatLng);
+    return valid.length >= 2 ? valid : null;
+  })();
+
   const fmtMeters = (m) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`);
   const farDistanceLabel = distanceToSiteM == null ? '' : fmtMeters(distanceToSiteM);
   // Prefer the actual road distance from the router; fall back to straight-line.
@@ -1008,6 +1031,16 @@ export default function MapNavigationPage() {
             <Polyline
               positions={displayedApproachRoute}
               pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.9, lineCap: 'round', lineJoin: 'round' }}
+            />
+          )}
+
+          {/* Off-road connector — bridges the gap between where the driving
+              route stops (nearest road) and the gate/office, so the path reads
+              as continuous while still far. Dashed = "off-road, walk this way". */}
+          {approachConnector && (
+            <Polyline
+              positions={approachConnector}
+              pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.7, lineCap: 'round', lineJoin: 'round', dashArray: '4 8' }}
             />
           )}
 
