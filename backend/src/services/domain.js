@@ -420,12 +420,31 @@ async function polishChatbotResult(state, query, result, locationId) {
         .map((n) => n.label)
     : [];
 
+  // The AI engine answers navigation queries with a *structured* result
+  // (status + alternatives + a generic `message`) and no natural `answer`
+  // sentence. `shouldPolish` skips OpenRouter when there is no answer text, so
+  // without this those nav/confirm replies never get a friendly rewrite — the
+  // widget just shows its canned "not sure" line and the LLM layer is bypassed.
+  // Synthesize a plain answer first (a routing instruction for a resolved hit,
+  // a "did you mean…" prompt for a confirm), so every reply flows through
+  // OpenRouter and comes back friendly and grounded. If the LLM is disabled or
+  // times out, polishAnswer returns this synthesized text unchanged — still an
+  // improvement over the canned fallback.
+  let localAnswer = result;
+  if (result && !String(result.answer || '').trim()) {
+    const synthesized = (map && formatNavAnswer(map, result))
+      || (result.message ? String(result.message).trim() : '');
+    if (synthesized) {
+      localAnswer = { ...result, answer: synthesized };
+    }
+  }
+
   const context = {
-    destinationLabel: result && result.destinationLabel,
-    locationName: result && result.locationName,
+    destinationLabel: localAnswer && localAnswer.destinationLabel,
+    locationName: localAnswer && localAnswer.locationName,
     availableDestinations,
   };
-  return openrouterClient.polishAnswer({ query, localAnswer: result, context });
+  return openrouterClient.polishAnswer({ query, localAnswer, context });
 }
 
 async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
