@@ -591,9 +591,105 @@ async function chatbotRespondRaw(state, { query, locationId, organizationId }) {
   };
 }
 
+function normalizeLabel(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+// Map a destination *name* (as chosen by the LLM from the list we gave it) back
+// to a real node on the map. Exact normalized match first, then a loose
+// contains-match, so "Store" resolves to a "Store " node and "IT dept" to
+// "IT Department". Returns null when nothing plausibly matches — the caller then
+// treats the reply as a plain answer with no route, so a hallucinated name is
+// harmless.
+function findNodeByLabel(map, label) {
+  if (!map || !label) return null;
+  const target = normalizeLabel(label);
+  if (!target) return null;
+  const nodes = (map.nodes || []).filter(
+    (n) => n && n.label && !['exit', 'checkpoint'].includes(n.type),
+  );
+  return (
+    nodes.find((n) => normalizeLabel(n.label) === target)
+    || nodes.find((n) => {
+      const nl = normalizeLabel(n.label);
+      return nl.includes(target) || target.includes(nl);
+    })
+    || null
+  );
+}
+
+// OpenRouter is the primary brain for the visitor chatbot: every message goes to
+// it, it answers grounded ONLY in the facility's real destinations + FAQ, and it
+// decides whether the visitor wants to navigate. When it names a destination we
+// map it to a node and hand the frontend a route to set — immediately for an
+// exact match (confirm=false) or after a spoken "ok" for an ambiguous one
+// (confirm=true). Greetings and general questions come back as a friendly answer
+// with no route. If the LLM is disabled or unreachable we fall back to the local
+// deterministic flow (AI-engine classifier + FAQ, with the polish layer).
 async function chatbotRespond(state, payload) {
+  const { query, locationId, organizationId } = payload || {};
+  const trimmed = String(query || '').trim();
+
+  if (!trimmed) {
+    return {
+      answer: 'Hi! Tell me where you would like to go, or ask something like "Where is the HR office?"',
+      confidence: 1,
+      type: 'greeting',
+      source: 'fallback',
+    };
+  }
+
+  if (openrouterClient.isEnabled()) {
+    const map = getLocationMap(state, locationId);
+    const location = (state.locations || []).find((entry) => entry.id === locationId) || null;
+    const availableDestinations = (map && map.nodes ? map.nodes : [])
+      .filter((n) => n && n.label && !['exit', 'checkpoint'].includes(n.type))
+      .map((n) => String(n.label).trim());
+    const faqPool = (state.faq || []).filter((entry) => {
+      if (!entry || !entry.answer) return false;
+      if (!organizationId || !entry.organizationId) return true;
+      return entry.organizationId === organizationId;
+    });
+
+    const agent = await openrouterClient.converse({
+      query: trimmed,
+      context: {
+        locationName: location ? location.name : null,
+        availableDestinations,
+        faq: faqPool,
+      },
+    });
+
+    if (agent && agent.reply) {
+      const node = agent.destination ? findNodeByLabel(map, agent.destination) : null;
+      if (node) {
+        const exact = !agent.confirm;
+        return {
+          answer: agent.reply,
+          type: 'navigation',
+          // Exact match => 'resolved' so the app sets the route right away;
+          // ambiguous => 'confirm' so it waits for the visitor's "ok".
+          status: exact ? 'resolved' : 'confirm',
+          confidence: exact ? 0.9 : 0.6,
+          destinationNodeId: node.id,
+          destinationLabel: node.label,
+          locationId,
+          source: 'llm',
+        };
+      }
+
+      return {
+        answer: agent.reply,
+        confidence: 0.7,
+        type: 'faq',
+        source: 'llm',
+      };
+    }
+    // LLM disabled mid-flight or unreachable — fall through to the local flow.
+  }
+
   const raw = await chatbotRespondRaw(state, payload);
-  return polishChatbotResult(state, payload && payload.query, raw, payload && payload.locationId);
+  return polishChatbotResult(state, trimmed, raw, locationId);
 }
 
 function buildVisitorResponse(state, visitorId) {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, X, Send, Bot, Mic, MicOff, Navigation2 } from 'lucide-react';
+import { Sparkles, X, Send, Bot, Mic, MicOff } from 'lucide-react';
 import { useSinarms } from '../../context/SinarmsContext';
 
 export default function AIChatbot({ organizationId, locationId, open, onOpenChange, hideLauncher = false, livePosition = null } = {}) {
@@ -26,6 +26,10 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
   const [isListening, setIsListening] = useState(false);
   const messagesEndRef = useRef(null);
   const panelRef = useRef(null);
+  // A destination the assistant proposed but has not set yet, held until the
+  // visitor confirms it in chat (e.g. types "ok"). No buttons — confirmation is
+  // conversational. Shape: { destinationNodeId, destinationLabel, locationId }.
+  const pendingDestinationRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -50,107 +54,88 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
     };
   }, [isOpen]);
 
+  // Short affirmations / denials used to confirm or cancel a proposed
+  // destination conversationally (English + a few Kinyarwanda/French forms).
+  const AFFIRM_RE = /^\s*(ok(ay)?|k|yes|ya|yeah|yep|yup|sure|go|proceed|confirm|do it|let'?s go|please do|yego|ni\s?byo|oui|d'accord)\b/i;
+  const DENY_RE = /^\s*(no|nope|nah|cancel|stop|not now|oya|non)\b/i;
+
+  const pushBot = (text) =>
+    setMessages(prev => [...prev, { id: Date.now() + Math.floor(Math.random() * 1000), sender: 'bot', text }]);
+
+  const setRoute = async (destinationNodeId, destinationLabel, targetLocationId) => {
+    await rerouteVisitor(currentVisitor.id, {
+      destinationNodeId,
+      locationId: targetLocationId,
+      currentPosition,
+    });
+  };
+
   const handleSend = async () => {
     if (!input.trim()) return;
 
     const text = input.trim();
     setMessages(prev => [...prev, { id: Date.now(), sender: 'user', text }]);
     setInput('');
-    setIsTyping(true);
 
+    // If the assistant just proposed a destination, a plain "ok"/"no" confirms
+    // or cancels it — no new question is sent to the assistant.
+    const pending = pendingDestinationRef.current;
+    if (pending && AFFIRM_RE.test(text)) {
+      pendingDestinationRef.current = null;
+      if (!currentVisitor?.id) {
+        pushBot('Please check in first so I can set your route.');
+        return;
+      }
+      setIsTyping(true);
+      try {
+        await setRoute(pending.destinationNodeId, pending.destinationLabel, pending.locationId);
+        pushBot(`Great — routing you to ${pending.destinationLabel || 'your destination'}. Follow the highlighted path on the map.`);
+      } catch (_error) {
+        pushBot('I could not update your route. Please ask at the Reception desk.');
+      } finally {
+        setIsTyping(false);
+      }
+      return;
+    }
+    if (pending && DENY_RE.test(text)) {
+      pendingDestinationRef.current = null;
+      pushBot('No problem — tell me where you would like to go.');
+      return;
+    }
+
+    setIsTyping(true);
     try {
       const response = await sendChatbotQuery({ organizationId, locationId, query: text });
       const reply =
         response?.answer ||
         response?.fallback ||
         'I am not sure about that. Please ask at the Reception desk.';
+      pushBot(reply);
 
-      const confidence = Number(response?.confidence || 0);
-      const isConfidentSameLocation = Boolean(
-        response?.destinationNodeId
-        && currentVisitor?.id
-        && response.status === 'resolved'
-        && !response.crossLocation
-        && confidence >= 0.7,
-      );
-      const needsConfirmation = Boolean(
-        response?.destinationNodeId
-        && currentVisitor?.id
-        && (response.crossLocation || response.status === 'confirm'),
-      );
+      const destId = response?.destinationNodeId || null;
+      const destLabel = response?.destinationLabel || null;
+      const targetLocationId = response?.locationId || locationId;
+      const canRoute = Boolean(destId) && Boolean(currentVisitor?.id);
 
-      const action = needsConfirmation
-        ? {
-            kind: response.crossLocation ? 'switch-location' : 'set-destination',
-            destinationNodeId: response.destinationNodeId,
-            destinationLabel: response.destinationLabel,
-            locationId: response.locationId || locationId,
-            locationName: response.locationName,
-          }
-        : null;
-
-      const botMessageId = Date.now() + 1;
-      setMessages(prev => [...prev, { id: botMessageId, sender: 'bot', text: reply, action }]);
-
-      // Auto-navigate on a confident, same-location hit — no extra click needed.
-      if (isConfidentSameLocation) {
+      if (canRoute && response?.status === 'resolved' && !response?.crossLocation) {
+        // Exact destination — set the route immediately. The reply already told
+        // the visitor we're taking them there, so no extra message is needed.
+        pendingDestinationRef.current = null;
         try {
-          await rerouteVisitor(currentVisitor.id, {
-            destinationNodeId: response.destinationNodeId,
-            locationId: response.locationId || locationId,
-            currentPosition,
-          });
-          setMessages(prev => [
-            ...prev,
-            {
-              id: Date.now() + 2,
-              sender: 'bot',
-              text: `Route set to ${response.destinationLabel || 'your destination'} — follow the highlighted path on the map.`,
-            },
-          ]);
+          await setRoute(destId, destLabel, targetLocationId);
         } catch (_error) {
-          setMessages(prev => [
-            ...prev,
-            {
-              id: Date.now() + 2,
-              sender: 'bot',
-              text: 'I found the place but could not update your route automatically. Please ask at Reception.',
-            },
-          ]);
+          pushBot('I found the place but could not set your route automatically. Please ask at Reception.');
         }
+      } else if (destId) {
+        // Suggested / ambiguous destination — hold it until the visitor says ok.
+        pendingDestinationRef.current = { destinationNodeId: destId, destinationLabel: destLabel, locationId: targetLocationId };
+      } else {
+        pendingDestinationRef.current = null;
       }
-    } catch (error) {
-      setMessages(prev => [
-        ...prev,
-        { id: Date.now() + 1, sender: 'bot', text: 'The assistant is unavailable right now. Please ask at the Reception desk.' },
-      ]);
+    } catch (_error) {
+      pushBot('The assistant is unavailable right now. Please ask at the Reception desk.');
     } finally {
       setIsTyping(false);
-    }
-  };
-
-  const handleAction = async (messageId, action) => {
-    if (!action || !currentVisitor?.id) return;
-    setMessages(prev => prev.map((msg) => (msg.id === messageId ? { ...msg, actionPending: true } : msg)));
-    try {
-      await rerouteVisitor(currentVisitor.id, {
-        destinationNodeId: action.destinationNodeId,
-        locationId: action.locationId,
-        currentPosition,
-      });
-      const confirmation = action.kind === 'switch-location'
-        ? `Switched to ${action.locationName || 'the new location'}. Follow the highlighted route to ${action.destinationLabel || 'your destination'}.`
-        : `Route updated. Follow the highlighted path to ${action.destinationLabel || 'your destination'}.`;
-      setMessages(prev => [
-        ...prev.map((msg) => (msg.id === messageId ? { ...msg, action: null, actionPending: false, actionDone: true } : msg)),
-        { id: Date.now(), sender: 'bot', text: confirmation },
-      ]);
-    } catch (error) {
-      setMessages(prev => prev.map((msg) => (
-        msg.id === messageId
-          ? { ...msg, actionPending: false, actionError: 'Could not update your route. Please ask at Reception.' }
-          : msg
-      )));
     }
   };
 
@@ -224,26 +209,6 @@ export default function AIChatbot({ organizationId, locationId, open, onOpenChan
                     }`}
                   >
                     <div>{msg.text}</div>
-                    {msg.action && (
-                      <button
-                        onClick={() => handleAction(msg.id, msg.action)}
-                        disabled={msg.actionPending}
-                        className="mt-3 inline-flex items-center gap-2 text-xs font-semibold bg-[var(--color-brand-terracotta)] dark:bg-red-500 text-white px-3 py-2 rounded-full shadow-sm hover:scale-105 transition-transform disabled:opacity-60 disabled:cursor-progress"
-                      >
-                        <Navigation2 size={14} />
-                        {msg.actionPending
-                          ? 'Updating route...'
-                          : msg.action.kind === 'switch-location'
-                            ? `Switch to ${msg.action.locationName || 'that location'} and go`
-                            : `Go to ${msg.action.destinationLabel || 'this place'}`}
-                      </button>
-                    )}
-                    {msg.actionDone && (
-                      <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400 font-semibold">Route updated.</p>
-                    )}
-                    {msg.actionError && (
-                      <p className="mt-2 text-xs text-red-600 dark:text-red-400 font-semibold">{msg.actionError}</p>
-                    )}
                   </div>
                 </div>
               ))}
