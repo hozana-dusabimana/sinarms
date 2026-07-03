@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, MapPin, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, MessageSquareHeart, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
+import { CheckCircle2, ChevronRight, CornerUpLeft, CornerUpRight, Maximize, Minimize, Route, Target, ShieldCheck, Map as MapLucide, MessageCircle, MessageSquareHeart, Bell, X, Phone, AlertTriangle, User, PartyPopper, LocateFixed, Loader2, Navigation } from 'lucide-react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import AIChatbot from '../../components/visitor/AIChatbot';
 import { useSinarms } from '../../context/SinarmsContext';
@@ -827,7 +827,6 @@ export default function MapNavigationPage() {
     : [];
 
   const destinationLabel = destinationNode?.label || routeFallbackNode?.label || t('visitor.nav.destination');
-  const currentNodeLabel = currentNode?.label || t('visitor.nav.youAreHere');
   const totalSteps = liveSteps.length;
   const totalRouteDistance = liveSteps.reduce((total, step) => total + (step.distance || 0), 0);
 
@@ -1186,17 +1185,14 @@ export default function MapNavigationPage() {
           </div>
         )}
 
-        {/* Floating location pill at bottom of map */}
+        {/* Current-node pill intentionally hidden: it showed the snapped graph
+            node (e.g. "Main Entrance"), which is misleading while the live GPS
+            is still far up the road and the node hasn't advanced. The bottom-4
+            container is kept but sr-only, so the live distance still reaches
+            screen readers and the nav countdown tests. */}
         {!isFullscreen && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[650] flex items-center gap-2 px-4 py-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-700 shadow-lg">
-            <MapPin size={14} className="text-[var(--color-brand-terracotta)] dark:text-red-400" />
-            <span className="text-xs font-bold text-slate-800 dark:text-slate-100">{currentNodeLabel}</span>
-            {/* Remaining distance is intentionally NOT shown visually: it reflects
-                the on-site walking route, which is 0/misleading when off-site
-                (produced a bogus "0m away"). The approach banner already surfaces
-                the real distance. Kept sr-only so screen readers and the nav
-                countdown tests can still read the live value. */}
-            <span className="sr-only">{t('visitor.nav.metersAway', { meters: Math.round(remainingDistance) })}</span>
+          <div className="sr-only bottom-4">
+            {t('visitor.nav.metersAway', { meters: Math.round(remainingDistance) })}
           </div>
         )}
       </div>
